@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Ejecutivo - Logística AEC</title>
+    <style>
+        :root {
+            --primary-navy: #0B2046;
+            --secondary-blue: #1A3668;
+            --white: #FFFFFF;
+            --light-gray: #F4F7F6;
+            --accent-blue: #3A6EA5;
+            --danger-red: #D32F2F;
+            --warning-orange: #F57C00;
+            --success-green: #2E7D32;
+            --border-color: #E0E0E0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--light-gray);
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+
+        /* Encabezado y Navegación Separada */
+        .header {
+            background-color: var(--primary-navy);
+            color: var(--white);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-modules {
+            display: flex;
+            gap: 10px;
+            background-color: var(--secondary-blue);
+            padding: 10px 30px;
+            border-bottom: 3px solid var(--accent-blue);
+        }
+
+        .nav-btn {
+            background-color: transparent;
+            color: #A0B4D6;
+            border: 1px solid transparent;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover {
+            background-color: rgba(255,255,255,0.1);
+            color: var(--white);
+        }
+
+        .nav-btn.active {
+            background-color: var(--accent-blue);
+            color: var(--white);
+        }
+
+        .container {
+            max-width: 1250px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+
+        /* Controles Dinámicos */
+        .controls-panel {
+            background-color: var(--white);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 40px;
+            align-items: flex-end;
+            border: 1px solid var(--border-color);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--secondary-blue);
+            text-transform: uppercase;
+        }
+
+        /* Switch Selección Única */
+        .radio-switch {
+            display: flex;
+            background-color: #eee;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #ccc;
+        }
+
+        .radio-switch input[type="radio"] {
+            display: none;
+        }
+
+        .radio-switch label {
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: #555;
+            transition: background-color 0.3s, color 0.3s;
+            margin: 0;
+            text-transform: none;
+        }
+
+        .radio-switch input[type="radio"]:checked + label {
+            background-color: var(--primary-navy);
+            color: var(--white);
+        }
+
+        select {
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            outline: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            background-color: #FAFAFA;
+            min-width: 250px;
+        }
+
+        /* Tabla Corporativa */
+        .table-container {
+            background-color: var(--white);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: right;
+        }
+
+        th {
+            background-color: var(--light-gray);
+            color: var(--primary-navy);
+            padding: 15px;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--primary-navy);
+        }
+
+        th:first-child, td:first-child {
+            text-align: left;
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            font-size: 0.95rem;
+        }
+
+        tr:hover {
+            background-color: #F4F7F6;
+        }
+
+        .col-mayoreo {
+            background-color: #f0f4f8;
+            font-weight: 600;
+        }
+
+        /* Indicadores de Estado */
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            display: inline-block;
+            text-align: center;
+            min-width: 110px;
+        }
+
+        .status-critical { background-color: #ffebee; color: var(--danger-red); border: 1px solid #ffcdd2; }
+        .status-warning { background-color: #fff3e0; color: var(--warning-orange); border: 1px solid #ffe0b2; }
+        .status-ok { background-color: #e8f5e9; color: var(--success-green); border: 1px solid #c8e6c9; }
+
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="header-title">Panel Ejecutivo de Operaciones</div>
+        <div style="font-size: 0.9rem;">Análisis de Datos Logísticos</div>
+    </div>
+
+    <div class="nav-modules">
+        <button class="nav-btn active">Dashboard Sugerido</button>
+        <button class="nav-btn">Rotación (ABC)</button>
+        <div style="width: 2px; background-color: #3A6EA5; margin: 0 10px;"></div>
+        <button class="nav-btn">Despacho</button>
+        <button class="nav-btn">Distribución</button>
+        <button class="nav-btn">Etiquetado</button>
+    </div>
+
+    <div class="container">
+        
+        <div class="controls-panel">
+            <div class="control-group">
+                <label>Visualización de Datos</label>
+                <div class="radio-switch">
+                    <input type="radio" id="viewUnidades" name="viewType" value="unidades" checked onchange="actualizarVista()">
+                    <label for="viewUnidades">Unidades Físicas</label>
+                    
+                    <input type="radio" id="viewMoneda" name="viewType" value="moneda" onchange="actualizarVista()">
+                    <label for="viewMoneda">Valor Financiero (L)</label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Clasificación de Formato</label>
+                <select id="filtroFormato" onchange="actualizarVista()">
+                    <option value="todos">Vista Global Consolidada</option>
+                    <option value="mayoreo">Solo Formato Mayoreo</option>
+                    <option value="detalle">Solo Formato Detalle</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table id="sugeridoTable">
+                <thead>
+                    <tr>
+                        <th>Grupo de Producto</th>
+                        <th>Saldo CDI01</th>
+                        <th>Necesidad Detalle</th>
+                        <th class="col-mayoreo">Necesidad Mayoreo</th>
+                        <th>Sugerido Global AEC</th>
+                        <th style="text-align: center;">Estado Abastecimiento</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Datos extraídos del CSV proporcionado
+        const datosCSV = [
+            { grupo: "BOXER P/HOMBRE P/CORTA ALGODON", saldo: 207477, detalle: 0, mayoreo: 1835, global: 12372, costo: 65.50 },
+            { grupo: "BOXER P/HOMBRE P/CORTA MICROFIBRA", saldo: 188934, detalle: 103, mayoreo: 217, global: 34188, costo: 72.00 },
+            { grupo: "MASCARILLA FACIAL MASCARA", saldo: 177596, detalle: 6272, mayoreo: 0, global: 31032, costo: 25.00 },
+            { grupo: "ESMALTE REVEL COLOR", saldo: 143174, detalle: 425, mayoreo: 0, global: 48956, costo: 18.25 },
+            { grupo: "SET COLAS P/DAMA", saldo: 40222, detalle: 14931, mayoreo: 28, global: 15660, costo: 12.00 },
+            { grupo: "GANCHO P/NIÑA PINZA", saldo: 9459, detalle: 9796, mayoreo: 0, global: 10667, costo: 15.50 },
+            { grupo: "COLA P/DAMA", saldo: 10031, detalle: 9378, mayoreo: 141, global: 10144, costo: 8.00 },
+            { grupo: "GANCHO P/DAMA METALICO GRANDE", saldo: 3975, detalle: 9103, mayoreo: 561, global: 10763, costo: 22.00 }
+        ];
+
+        function formatearNumero(valor, esMoneda) {
+            if (esMoneda) {
+                return "L " + parseFloat(valor).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            }
+            return Math.round(valor).toLocaleString('en-US');
+        }
+
+        function actualizarVista() {
+            const tbody = document.getElementById("tableBody");
+            const esMoneda = document.getElementById("viewMoneda").checked;
+            const formatoFiltro = document.getElementById("filtroFormato").value;
+            
+            tbody.innerHTML = "";
+
+            datosCSV.forEach(row => {
+                // Lógica del filtro de Mayoreo/Detalle
+                if (formatoFiltro === "mayoreo" && row.mayoreo === 0) return;
+                if (formatoFiltro === "detalle" && row.detalle === 0) return;
+
+                // Cálculo de multiplicador según el switch de selección única
+                let multiplicador = esMoneda ? row.costo : 1;
+
+                let valSaldo = row.saldo * multiplicador;
+                let valDetalle = row.detalle * multiplicador;
+                let valMayoreo = row.mayoreo * multiplicador;
+                let valGlobal = row.global * multiplicador;
+
+                // Lógica de semáforo de abastecimiento
+                let estadoHTML = "";
+                if (row.saldo < row.global) {
+                    estadoHTML = `<span class="status-badge status-critical">Quiebre Inminente</span>`;
+                } else if (row.saldo < (row.global * 1.5)) {
+                    estadoHTML = `<span class="status-badge status-warning">Stock Ajustado</span>`;
+                } else {
+                    estadoHTML = `<span class="status-badge status-ok">Óptimo</span>`;
+                }
+
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td><strong>${row.grupo}</strong></td>
+                    <td style="color: var(--secondary-blue); font-weight: bold;">${formatearNumero(valSaldo, esMoneda)}</td>
+                    <td>${formatearNumero(valDetalle, esMoneda)}</td>
+                    <td class="col-mayoreo">${formatearNumero(valMayoreo, esMoneda)}</td>
+                    <td>${formatearNumero(valGlobal, esMoneda)}</td>
+                    <td style="text-align: center;">${estadoHTML}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Renderizado inicial
+        actualizarVista();
+    </script>
+</body>
+</html>
