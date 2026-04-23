@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portal Logístico - Megabodega AEC</title>
+    <title>Portal de Abastecimiento AEC - Pro</title>
     <style>
         :root {
             --primary-navy: #0B2046;
@@ -11,205 +11,309 @@
             --white: #FFFFFF;
             --light-gray: #F4F7F6;
             --accent-blue: #3A6EA5;
-            --danger-red: #D32F2F;
-            --success-green: #2E7D32;
+            --green-envio: #2E7D32;
+            --yellow-alerta: #FBC02D;
+            --red-quiebre: #D32F2F;
         }
 
         body {
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--light-gray);
             margin: 0;
             color: #333;
         }
 
+        /* Navegación Corporativa */
         .header {
             background-color: var(--primary-navy);
             color: var(--white);
-            padding: 15px 25px;
+            padding: 15px 30px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .nav-modules {
+        .nav-tabs {
             display: flex;
             background-color: var(--secondary-blue);
-            padding: 10px 20px;
-            gap: 15px;
+            padding: 0 30px;
+            gap: 20px;
             overflow-x: auto;
+            border-bottom: 3px solid var(--accent-blue);
         }
 
-        .nav-btn {
-            background: none;
-            border: none;
+        .nav-link {
+            padding: 15px 20px;
             color: #A0B4D6;
+            text-decoration: none;
             font-weight: bold;
+            font-size: 0.9rem;
             cursor: pointer;
-            padding: 8px 12px;
-            white-space: nowrap;
+            border-bottom: 3px solid transparent;
         }
 
-        .nav-btn.active {
+        .nav-link.active {
             color: var(--white);
-            border-bottom: 2px solid var(--white);
+            border-bottom: 3px solid var(--white);
         }
 
         .container {
-            padding: 20px;
-            max-width: 1200px;
-            margin: auto;
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 0 20px;
         }
 
-        .controls {
-            background: var(--white);
-            padding: 20px;
-            border-radius: 8px;
-            display: flex;
-            flex-wrap: wrap;
+        /* Filtros e Indicadores */
+        .dashboard-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 25px;
         }
 
-        .toggle-container {
-            display: flex;
-            border: 1px solid var(--accent-blue);
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        .toggle-btn {
-            padding: 8px 16px;
+        .card {
             background: var(--white);
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-            color: var(--accent-blue);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border-left: 5px solid var(--accent-blue);
         }
 
-        .toggle-btn.active {
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .filter-group label {
+            font-weight: bold;
+            color: var(--primary-navy);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        select, input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        /* Botón de Selección Única (Unidades vs Moneda) */
+        .switch-container {
+            display: flex;
+            border: 2px solid var(--accent-blue);
+            border-radius: 8px;
+            overflow: hidden;
+            width: fit-content;
+        }
+
+        .switch-btn {
+            padding: 10px 20px;
+            border: none;
+            background: var(--white);
+            color: var(--accent-blue);
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .switch-btn.active {
             background: var(--accent-blue);
             color: var(--white);
+        }
+
+        /* Tabla Interactiva */
+        .table-section {
+            background: var(--white);
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            overflow: hidden;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            background: var(--white);
-            border-radius: 8px;
-            overflow: hidden;
+            text-align: left;
+        }
+
+        thead {
+            background-color: var(--primary-navy);
+            color: var(--white);
         }
 
         th {
-            background: var(--primary-navy);
-            color: var(--white);
-            padding: 12px;
-            text-align: left;
-            font-size: 0.9rem;
+            padding: 15px;
+            font-size: 0.85rem;
+            text-transform: uppercase;
         }
 
         td {
-            padding: 12px;
+            padding: 15px;
             border-bottom: 1px solid #eee;
             font-size: 0.95rem;
         }
 
-        .col-mayoreo { background-color: #f0f4f8; font-weight: bold; }
-        
-        .status {
-            font-weight: bold;
-            padding: 4px 8px;
-            border-radius: 4px;
+        tr:hover {
+            background-color: #f9fbfd;
         }
-        .status-ok { color: var(--success-green); }
-        .status-low { color: var(--danger-red); }
+
+        /* Semáforo */
+        .semaforo {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.8rem;
+            display: inline-block;
+            text-align: center;
+            min-width: 100px;
+        }
+
+        .bg-green { background-color: #E8F5E9; color: var(--green-envio); border: 1px solid var(--green-envio); }
+        .bg-yellow { background-color: #FFFDE7; color: #F57F17; border: 1px solid #F57F17; }
+        .bg-red { background-color: #FFEBEE; color: var(--red-quiebre); border: 1px solid var(--red-quiebre); }
+
+        .codigo-text {
+            color: #666;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <h2>Panel de Abastecimiento AEC</h2>
+        <h1 style="margin:0; font-size:1.4rem;">Megabodega AEC - Inteligencia Operativa</h1>
+        <div>Analista: Edwin Ramirez</div>
     </div>
 
-    <div class="nav-modules">
-        <button class="nav-btn active">Sugerido vs Saldos</button>
-        <button class="nav-btn">Despacho</button>
-        <button class="nav-btn">Distribución</button>
-        <button class="nav-btn">Etiquetado</button>
+    <div class="nav-tabs">
+        <div class="nav-link active">Sugerido Interactivos</div>
+        <div class="nav-link">Despacho</div>
+        <div class="nav-link">Distribución</div>
+        <div class="nav-link">Etiquetado</div>
     </div>
 
     <div class="container">
-        <div class="controls">
-            <div>
-                <label style="display:block; font-weight:bold; margin-bottom:5px;">Vista:</label>
-                <div class="toggle-container">
-                    <button id="btnU" class="toggle-btn active" onclick="setView('u')">Unidades</button>
-                    <button id="btnM" class="toggle-btn" onclick="setView('m')">Moneda (L)</button>
+        
+        <div class="dashboard-controls">
+            <div class="card filter-group">
+                <label>Filtrar por División</label>
+                <select id="divFilter" onchange="applyFilters()">
+                    <option value="TODAS">-- Todas las Divisiones --</option>
+                    <option value="INTERIOR DETALLE">INTERIOR DETALLE</option>
+                    <option value="BELLEZA">BELLEZA</option>
+                    <option value="CALZADO PLASTICO">CALZADO PLASTICO</option>
+                </select>
+            </div>
+
+            <div class="card filter-group">
+                <label>Métrica de Visualización</label>
+                <div class="switch-container">
+                    <button id="uBtn" class="switch-btn active" onclick="setMetric('U')">Unidades</button>
+                    <button id="mBtn" class="switch-btn" onclick="setMetric('L')">Lempiras (L)</button>
                 </div>
             </div>
-            <div>
-                <label style="display:block; font-weight:bold; margin-bottom:5px;">Formato:</label>
-                <select id="filter" onchange="render()" style="padding:8px; border-radius:4px; border:1px solid #ccc;">
-                    <option value="all">Consolidado Total</option>
-                    <option value="mayoreo">Solo Mayoreo</option>
-                </select>
+
+            <div class="card filter-group">
+                <label>Buscar por Grupo / Código</label>
+                <input type="text" id="searchInput" placeholder="Ej: Boxer, Mascarilla..." onkeyup="applyFilters()">
             </div>
         </div>
 
-        <table id="dataTable">
-            <thead>
-                <tr>
-                    <th>Grupo</th>
-                    <th>Saldo CDI</th>
-                    <th>Mayoreo</th>
-                    <th>Sugerido</th>
-                    <th>Estado</th>
-                </tr>
-            </thead>
-            <tbody id="tableBody"></tbody>
-        </table>
+        <div class="table-section">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Cód. Grupo</th>
+                        <th>Descripción del Grupo</th>
+                        <th>Saldo Bodega</th>
+                        <th>Sugerido Global</th>
+                        <th>Estatus Abastecimiento</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- Datos dinámicos aquí -->
+                </tbody>
+            </table>
+        </div>
+
     </div>
 
     <script>
+        // Datos extraídos del reporte Sugerido vs Saldos
         const rawData = [
-            { g: "BOXER ALGODON", s: 207477, m: 1835, sug: 12372, c: 65.5 },
-            { g: "BOXER MICROFIBRA", s: 188934, m: 217, sug: 34188, c: 72 },
-            { g: "MASCARILLA FACIAL", s: 177596, m: 0, sug: 31032, c: 25 },
-            { g: "ESMALTE REVEL", s: 143174, m: 0, sug: 48956, c: 18.25 }
+            { id: "09001023", div: "INTERIOR DETALLE", grupo: "BOXER P/HOMBRE P/CORTA ALGODON", saldo: 207477, sug: 12372, costo: 45.00 },
+            { id: "09001001", div: "INTERIOR DETALLE", grupo: "BOXER P/HOMBRE P/CORTA MICROFIBRA", saldo: 188934, sug: 34188, costo: 52.00 },
+            { id: "23003039", div: "BELLEZA", grupo: "MASCARILLA FACIAL MASCARA", saldo: 177596, sug: 31032, costo: 12.50 },
+            { id: "23002047", div: "BELLEZA", grupo: "ESMALTE REVEL COLOR", saldo: 143174, sug: 48956, costo: 18.00 },
+            { id: "53004007", div: "CALZADO PLASTICO", grupo: "ZAPATILLAS P/NIÑO PRE-JUV D/PLAYA", saldo: 870, sug: 1200, costo: 110.00 },
+            { id: "53005005", div: "CALZADO PLASTICO", grupo: "CHANCLETAS P/NIÑO INF D/DEDO MOBEC", saldo: 1794, sug: 3500, costo: 85.00 },
+            { id: "09001050", div: "INTERIOR DETALLE", grupo: "CAMISETA P/HOMBRE", saldo: 0, sug: 5000, costo: 95.00 }
         ];
 
-        let currentView = 'u';
+        let currentMetric = 'U';
 
-        function setView(v) {
-            currentView = v;
-            document.getElementById('btnU').classList.toggle('active', v === 'u');
-            document.getElementById('btnM').classList.toggle('active', v === 'm');
-            render();
+        function setMetric(m) {
+            currentMetric = m;
+            document.getElementById('uBtn').classList.toggle('active', m === 'U');
+            document.getElementById('mBtn').classList.toggle('active', m === 'L');
+            applyFilters();
         }
 
-        function render() {
+        function applyFilters() {
+            const div = document.getElementById('divFilter').value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
             const body = document.getElementById('tableBody');
-            const filter = document.getElementById('filter').value;
+            
             body.innerHTML = '';
 
-            rawData.forEach(item => {
-                if (filter === 'mayoreo' && item.m === 0) return;
+            const filtered = rawData.filter(item => {
+                const matchDiv = (div === 'TODAS' || item.div === div);
+                const matchSearch = item.grupo.toLowerCase().includes(search) || item.id.includes(search);
+                return matchDiv && matchSearch;
+            });
 
-                let factor = currentView === 'm' ? item.c : 1;
-                let symbol = currentView === 'm' ? 'L ' : '';
-
+            filtered.forEach(item => {
                 const tr = document.createElement('tr');
+                
+                // Lógica de cálculo Unidades vs Lempiras
+                const factor = currentMetric === 'L' ? item.costo : 1;
+                const prefijo = currentMetric === 'L' ? 'L ' : '';
+                
+                const valSaldo = (item.saldo * factor).toLocaleString();
+                const valSug = (item.sug * factor).toLocaleString();
+
+                // Lógica de Semáforo
+                let semaforoClass = '';
+                let semaforoText = '';
+                
+                if (item.saldo >= item.sug && item.saldo > 0) {
+                    semaforoClass = 'bg-green';
+                    semaforoText = 'PARA ENVIAR';
+                } else if (item.saldo > 0 && item.saldo < item.sug) {
+                    semaforoClass = 'bg-yellow';
+                    semaforoText = 'MÁS O MENOS';
+                } else {
+                    semaforoClass = 'bg-red';
+                    semaforoText = 'NO TENEMOS';
+                }
+
                 tr.innerHTML = `
-                    <td>${item.g}</td>
-                    <td>${symbol}${(item.s * factor).toLocaleString()}</td>
-                    <td class="col-mayoreo">${symbol}${(item.m * factor).toLocaleString()}</td>
-                    <td>${symbol}${(item.sug * factor).toLocaleString()}</td>
-                    <td><span class="status ${item.s > item.sug ? 'status-ok' : 'status-low'}">${item.s > item.sug ? 'OK' : 'Crítico'}</span></td>
+                    <td class="codigo-text">${item.id}</td>
+                    <td><strong>${item.grupo}</strong><br><small style="color:#999">${item.div}</small></td>
+                    <td>${prefijo}${valSaldo}</td>
+                    <td>${prefijo}${valSug}</td>
+                    <td><span class="semaforo ${semaforoClass}">${semaforoText}</span></td>
                 `;
                 body.appendChild(tr);
             });
         }
-        render();
+
+        // Carga inicial
+        applyFilters();
     </script>
 </body>
 </html>
+
+
