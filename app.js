@@ -8,8 +8,9 @@ let mainTable, skuTable;
 let necessityChart, statusChart;
 let currentView = 'gerencial'; 
 const TODAY = new Date('2026-04-28'); 
+const CURRENT_MONTH = TODAY.getMonth() + 1; // 1 a 12
 
-// REGLAS LOGÍSTICAS DE COMPORTAMIENTO (LIMITES FANTASMAS Y URGENCIA)
+// REGLAS LOGÍSTICAS DE COMPORTAMIENTO
 const reglasLogisticas = {
     "PASEO": { limiteFantasma: 0, minUrgencia: 1 },
     "HOGAR": { limiteFantasma: 0, minUrgencia: 1 },
@@ -19,21 +20,22 @@ const reglasLogisticas = {
     "DEFAULT": { limiteFantasma: 50, minUrgencia: 100 } 
 };
 
-const excepcionesGrupo = {
-    "CARROS DE BATERIA": { limiteFantasma: 0, minUrgencia: 1 },
-    "BICICLETAS": { limiteFantasma: 0, minUrgencia: 1 }
-};
-
 // ==========================================
 // INICIALIZACIÓN (DOCUMENT READY)
 // ==========================================
 $(document).ready(function() {
+    
+    // Inicializar Tabla Principal (Matriz) con RENDER para números
     mainTable = $('#mainTable').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 10,
         lengthMenu: [10, 25, 50, 100],
         columnDefs: [
-            { className: "text-center align-middle", targets: "_all" }
+            { className: "text-center align-middle", targets: "_all" },
+            { 
+                targets: [2, 3, 4, 5, 6], // Columnas numéricas
+                render: $.fn.dataTable.render.number(',', '.', 0, '') // Ordena bien y muestra con comas
+            }
         ],
         createdRow: function(row) { 
             $(row).addClass('clickable-row'); 
@@ -44,22 +46,20 @@ $(document).ready(function() {
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 10,
         columnDefs: [
-            { className: "text-center align-middle", targets: "_all" }
+            { className: "text-center align-middle", targets: "_all" },
+            { 
+                targets: [5, 7, 8], // Columnas numéricas
+                render: $.fn.dataTable.render.number(',', '.', 0, '') 
+            }
         ]
     });
 
-    $('#f_div, #f_cat, #f_grp, #f_age').select2({ 
-        theme: 'bootstrap-5', 
-        width: '100%', 
-        placeholder: "Seleccionar..." 
-    });
+    $('#f_div, #f_cat, #f_grp, #f_age').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Seleccionar..." });
 
     loadCSVData();
 
     $('#f_div, #f_cat, #f_grp, #f_age').on('change', function() {
-        if ($(this).attr('id') === 'f_div') {
-            updateSubFilters();
-        }
+        if ($(this).attr('id') === 'f_div') updateSubFilters();
         applyFilters();
     });
 
@@ -69,10 +69,7 @@ $(document).ready(function() {
         
         let groupName = rowData[0].split('<br>')[0].replace(/<b>|<\/b>/g, "").trim();
         let groupData = dataBase.find(d => d.grp === groupName);
-        
-        if (groupData) {
-            openDrillDown(groupData);
-        }
+        if (groupData) openDrillDown(groupData);
     });
 
     $('#resetFilters').on('click', function() {
@@ -80,6 +77,7 @@ $(document).ready(function() {
         renderDashboard(dataBase); 
     });
 });
+
 
 // ==========================================
 // LECTURA DE CSV Y SANITIZACIÓN DE DATOS
@@ -103,11 +101,11 @@ function loadCSVData() {
                 cat: (row["Categoria"] || "").trim(), 
                 grp_id: (row["Grupo ID"] || "").trim(), 
                 grp: grp,
-                s_aec: parseFloat(row["Saldo CDI01"]) || 0, 
-                s_ds: parseFloat(row["Saldo DSCDI"]) || 0,
-                n_aec: parseFloat(row["Necesidad detalle AEC"]) || 0, 
-                n_may: parseFloat(row["Necesidad mayoreo AEC"]) || 0,
-                n_ds: parseFloat(row["Necesidad DS"]) || 0, 
+                s_aec: Math.round(parseFloat(row["Saldo CDI01"]) || 0), 
+                s_ds: Math.round(parseFloat(row["Saldo DSCDI"]) || 0),
+                n_aec: Math.round(parseFloat(row["Necesidad detalle AEC"]) || 0), 
+                n_may: Math.round(parseFloat(row["Necesidad mayoreo AEC"]) || 0),
+                n_ds: Math.round(parseFloat(row["Necesidad DS"]) || 0), 
                 max_age: -1, 
                 age_cat: "Sin Dato", 
                 skus: []
@@ -126,34 +124,29 @@ function loadCSVData() {
                     estilo: (row["Estilo ID"] || "").trim(), 
                     marca: (row["Marca"] || "").trim(), 
                     desc: (row["ProdNombre"] || "").trim(), 
-                    s_aec: parseFloat(row["SaldoUND_EC"]) || 0, 
-                    s_ds: parseFloat(row["SaldoUND_DS"]) || 0,
+                    s_aec: Math.round(parseFloat(row["SaldoUND_EC"]) || 0), 
+                    s_ds: Math.round(parseFloat(row["SaldoUND_DS"]) || 0),
                     f_ec: formatearFecha(dEC), 
                     f_ds: formatearFecha(dDS),
                     age: age
                 });
 
-                if(age > dataMap[grp].max_age) {
-                    dataMap[grp].max_age = age;
-                }
+                if(age > dataMap[grp].max_age) dataMap[grp].max_age = age;
             }
         });
 
         dataBase = Object.values(dataMap);
-        dataBase.forEach(g => { 
-            g.age_cat = getAgeCategory(g.max_age); 
-        });
+        dataBase.forEach(g => { g.age_cat = getAgeCategory(g.max_age); });
 
         initFilters();
         renderDashboard(dataBase);
     }).catch(error => {
         console.error("Error al cargar los archivos CSV:", error);
-        alert("Ocurrió un error leyendo los archivos CSV. Revisa la consola.");
     });
 }
 
 // ==========================================
-// LÓGICA DE FILTROS EN CASCADA
+// FILTROS EN CASCADA
 // ==========================================
 function initFilters() {
     let divs = [...new Set(dataBase.map(i => i.div))].sort();
@@ -173,22 +166,30 @@ function updateSubFilters() {
 }
 
 function applyFilters() {
-    let f = { 
-        d: $('#f_div').val() || [], 
-        c: $('#f_cat').val() || [], 
-        g: $('#f_grp').val() || [], 
-        a: $('#f_age').val() || [] 
-    };
-    
+    let f = { d: $('#f_div').val() || [], c: $('#f_cat').val() || [], g: $('#f_grp').val() || [], a: $('#f_age').val() || [] };
     let filtered = dataBase.filter(r => 
         (!f.d.length || f.d.includes(r.div)) && 
         (!f.c.length || f.c.includes(r.cat)) &&
         (!f.g.length || f.g.includes(r.grp)) && 
         (!f.a.length || f.a.includes(r.age_cat))
     );
-    
     renderDashboard(filtered);
 }
+
+// ==========================================
+// EVALUAR TEMPORADA
+// ==========================================
+function isOutOfSeason(div, cat, grp) {
+    let upperGrp = grp.toUpperCase();
+    let upperCat = cat.toUpperCase();
+    
+    // Si es Navidad y no estamos entre Octubre(10) y Diciembre(12)
+    let isChristmas = upperGrp.includes("NAVIDAD") || upperCat.includes("NAVIDAD");
+    if (isChristmas && (CURRENT_MONTH < 10)) return true;
+    
+    return false;
+}
+
 
 // ==========================================
 // RENDERIZADO DUAL DE LA MATRIZ
@@ -202,7 +203,7 @@ function renderDashboard(data) {
 
     data.forEach(row => {
         let s = row.s_aec + row.s_ds;
-        let n = Math.round(row.n_aec + row.n_may + row.n_ds);
+        let n = row.n_aec + row.n_may + row.n_ds;
         
         tS += s; 
         tN += n;
@@ -211,30 +212,42 @@ function renderDashboard(data) {
         divSum[row.div] += n;
 
         let col7, col8;
+        let outOfSeason = isOutOfSeason(row.div, row.cat, row.grp);
 
         if (currentView === 'gerencial') {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
-            col7 = n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>');
             
-            if (n === 0 && s > 0) { 
-                col8 = label('Sano','bg-verde'); k.m3++; 
-            } else if (cob < 50) { 
-                col8 = label('Comprar Urgente','bg-rojo'); k.m1++; 
-            } else if (cob <= 100) { 
-                col8 = label('En Tiempo','bg-amarillo'); k.m2++; 
-            } else { 
-                col8 = label('Sano','bg-verde'); k.m3++; 
+            if (outOfSeason && s > 0) {
+                // Producto fuera de temporada con inventario = ESTANCADO/SOBRE-STOCK
+                col7 = `<b class="text-danger">${cob > 100 ? '> 100' : cob.toFixed(0)}%</b>`;
+                col8 = label('Inmovilizado','bg-morado'); k.m3++;
+            } else {
+                col7 = n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>');
+                
+                // Agregamos stock de seguridad lógico: Una cobertura del 100% no es sana, es ajustada. Sano es > 120%
+                if (n === 0 && s > 0) { 
+                    col8 = label('Sano','bg-verde'); k.m3++; 
+                } else if (cob < 50) { 
+                    col8 = label('Comprar Urgente','bg-rojo'); k.m1++; 
+                } else if (cob <= 110) { 
+                    col8 = label('En Tiempo','bg-amarillo'); k.m2++; 
+                } else { 
+                    col8 = label('Sano','bg-verde'); k.m3++; 
+                }
             }
             
         } else {
             let surtir = Math.min(s, n);
             let falta = n - s;
             
-            col7 = `<b class="fs-6 text-dark">📦 ${surtir}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta}</small>`:''}`;
+            col7 = `<b class="fs-6 text-dark">📦 ${surtir.toLocaleString()}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta.toLocaleString()}</small>`:''}`;
             
-            let r = excepcionesGrupo[row.grp] || reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
+            let r = reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
             
-            if (n === 0) { 
+            // Si está fuera de temporada, no se manda a buscar aunque el sistema pida
+            if (outOfSeason) {
+                col8 = label('Fuera de Temporada','bg-gris'); k.m4++;
+            } else if (n === 0) { 
                 col8 = label('Completado','bg-verde'); k.m4++; 
             } else if (s === 0) { 
                 col8 = label('Quiebre','bg-rojo'); k.m1++; 
@@ -249,14 +262,15 @@ function renderDashboard(data) {
             }
         }
 
+        // Fila construida con los valores numéricos puros para que DataTables ordene bien
         mainTable.row.add([
             `<b>${row.grp}</b><br><small class="text-muted">${row.grp_id}</small>`, 
             row.div, 
-            `<b class="text-primary fs-6">${s}</b>`, 
+            s, 
             row.n_aec, 
             row.n_may, 
             row.n_ds, 
-            `<b class="text-danger fs-6">${n}</b>`, 
+            n, 
             col7, 
             col8
         ]);
@@ -267,26 +281,20 @@ function renderDashboard(data) {
 }
 
 // ==========================================
-// ACTUALIZACIÓN DE GRÁFICOS Y KPIS
+// ACTUALIZACIÓN DE GRÁFICOS Y KPIS 
 // ==========================================
 function updateUI(s, n, k, divSum) {
     $('#kpiSaldo').text(Math.round(s).toLocaleString('en-US'));
     $('#kpiNec').text(Math.round(n).toLocaleString('en-US'));
 
     if (currentView === 'gerencial') {
-        $('#lblCritico').text('Comprar Urgente'); 
-        $('#kpiCriticos').text(k.m1);
-        $('#lblAjustado').text('En Tiempo'); 
-        $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
-        $('#lblOptimo').text('Cobertura Sana'); 
-        $('#kpiOptimos').text(k.m3);
+        $('#lblCritico').text('Comprar Urgente'); $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('En Tiempo'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
+        $('#lblOptimo').text('Sano / Inmovilizado'); $('#kpiOptimos').text(k.m3);
     } else {
-        $('#lblCritico').text('Quiebre / Faltante'); 
-        $('#kpiCriticos').text(k.m1);
-        $('#lblAjustado').text('Por Surtir'); 
-        $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
-        $('#lblOptimo').text('Residual / Completado'); 
-        $('#kpiOptimos').text(k.m4);
+        $('#lblCritico').text('Quiebre / Faltante'); $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
+        $('#lblOptimo').text('Residual / Completado'); $('#kpiOptimos').text(k.m4);
     }
 
     let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
@@ -294,32 +302,11 @@ function updateUI(s, n, k, divSum) {
     if(necessityChart) necessityChart.destroy();
     necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), {
         type: 'bar',
-        data: { 
-            labels: sorted.map(i => i[0]), 
-            datasets: [{ 
-                label: 'Necesidad', 
-                data: sorted.map(i => i[1]), 
-                backgroundColor: 'rgba(225, 37, 27, 0.85)', 
-                borderColor: '#E1251B', 
-                borderWidth: 1 
-            }] 
-        },
+        data: { labels: sorted.map(i => i[0]), datasets: [{ label: 'Necesidad', data: sorted.map(i => i[1]), backgroundColor: 'rgba(225, 37, 27, 0.85)', borderColor: '#E1251B', borderWidth: 1 }] },
         options: { 
-            responsive: true, 
-            maintainAspectRatio: false,
-            plugins: { 
-                datalabels: { 
-                    anchor: 'end', 
-                    align: 'top', 
-                    formatter: (v) => Math.round(v).toLocaleString('en-US'), 
-                    font: { weight: 'bold', size: 10 }, 
-                    color: '#E1251B' 
-                }, 
-                legend: { display: false } 
-            },
-            scales: { 
-                x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } } 
-            }
+            responsive: true, maintainAspectRatio: false,
+            plugins: { datalabels: { anchor: 'end', align: 'top', formatter: (v) => Math.round(v).toLocaleString('en-US'), font: { weight: 'bold', size: 10 }, color: '#E1251B' }, legend: { display: false } },
+            scales: { x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } } }
         }
     });
 
@@ -329,30 +316,8 @@ function updateUI(s, n, k, divSum) {
     if(statusChart) statusChart.destroy();
     statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), {
         type: 'doughnut',
-        data: { 
-            labels: labelsPie, 
-            datasets: [{ 
-                data: [k.m1, k.m2, k.m3+k.m4], 
-                backgroundColor: colorsPie, 
-                borderWidth: 2 
-            }] 
-        },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            cutout: '65%',
-            plugins: { 
-                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-                datalabels: {
-                    formatter: (value, ctx) => {
-                        let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                        let percentage = (value * 100 / sum).toFixed(1) + "%";
-                        return value > 0 ? percentage : '';
-                    },
-                    color: '#444', font: { weight: 'bold' }
-                }
-            } 
-        }
+        data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4], backgroundColor: colorsPie, borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }, datalabels: { formatter: (value, ctx) => { let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); let percentage = (value * 100 / sum).toFixed(1) + "%"; return value > 0 ? percentage : ''; }, color: '#444', font: { weight: 'bold' } } } }
     });
 }
 
@@ -397,7 +362,7 @@ function openDrillDown(g) {
             s.s_aec, 
             s.f_ds || '', 
             s.s_ds, 
-            `<span class="fw-bold fs-6">${t}</span>`, 
+            t, 
             t > 0 ? label('Sí','bg-verde') : label('No','bg-rojo')
         ]);
     });
@@ -409,9 +374,6 @@ function closeDrillDown() {
     $('#mainScreen').removeClass('hidden-screen'); 
 }
 
-// ==========================================
-// INTERACCIONES Y UTILIDADES
-// ==========================================
 function switchView(v) {
     currentView = v; 
     $('.view-btn').removeClass('active'); 
@@ -427,23 +389,11 @@ function switchView(v) {
     applyFilters(); 
 }
 
-function excelToDate(s) { 
-    if (!s || String(s).trim() === "" || isNaN(Number(s))) return null;
-    return new Date(Math.round((Number(s) - 25569) * 86400 * 1000)); 
-}
-
-function formatearFecha(d) { 
-    return d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}` : ""; 
-}
-
-function calcularDias(d) { 
-    return d ? Math.ceil(Math.abs(TODAY - d) / 86400000) : -1; 
-}
-
-function label(t, c) { 
-    return `<span class="status-pill ${c}">${t}</span>`; 
-}
-
+// UTILIDADES MATEMÁTICAS
+function excelToDate(s) { return s > 0 ? new Date(Math.round((Number(s) - 25569) * 86400 * 1000)) : null; }
+function formatearFecha(d) { return d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}` : ""; }
+function calcularDias(d) { return d ? Math.ceil(Math.abs(TODAY - d) / 86400000) : -1; }
+function label(t, c) { return `<span class="status-pill ${c}">${t}</span>`; }
 function getAgeCategory(a) { 
     if (a < 0) return "Sin Dato"; 
     if (a <= 30) return "Reciente (0-30 días)"; 
