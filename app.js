@@ -8,7 +8,7 @@ let currentView = 'gerencial';
 
 const TODAY = new Date('2026-04-28'); 
 
-// REGLAS LOGÍSTICAS POR DIVISIÓN
+// REGLAS LOGÍSTICAS POR DEFECTO
 const reglasLogisticas = {
     "PASEO": { limiteFantasma: 0, minUrgencia: 1 },
     "HOGAR": { limiteFantasma: 0, minUrgencia: 1 },
@@ -19,25 +19,16 @@ const reglasLogisticas = {
     "DEFAULT": { limiteFantasma: 50, minUrgencia: 100 } 
 };
 
-// EXCEPCIONES POR NOMBRE DE GRUPO EXACTO
-const excepcionesGrupo = {
-    "CARROS DE BATERIA": { limiteFantasma: 0, minUrgencia: 1 },
-    "BICICLETAS": { limiteFantasma: 0, minUrgencia: 1 }
-};
-
 $(document).ready(function() {
-    initUI();
+    initTables();
     loadCSVData();
 });
 
-function initUI() {
-    $('#f_div, #f_cat, #f_grp, #f_age').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Seleccionar..." });
-
+function initTables() {
     mainTable = $('#mainTable').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         responsive: true,
         pageLength: 10,
-        lengthMenu: [10, 25, 50, 100],
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
 
@@ -46,6 +37,7 @@ function initUI() {
         responsive: true, pageLength: 10
     });
 
+    // Clic en filas para el Drill-down
     $('#mainTable tbody').on('click', 'tr', function () {
         let rowData = mainTable.row(this).data();
         if (!rowData) return;
@@ -60,19 +52,18 @@ function initUI() {
     });
 }
 
-// CARGA Y CRUCE DE DATOS
 function loadCSVData() {
     Promise.all([
         fetch('sugerido.csv').then(res => res.text()),
         fetch('saldo.csv').then(res => res.text())
     ]).then(([sugeridoText, saldoText]) => {
-        // Configuramos PapaParse para usar ";" como delimitador según el análisis de tus archivos
-        let sugeridoRaw = Papa.parse(sugeridoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
-        let saldoRaw = Papa.parse(saldoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
+        // DETECCIÓN AUTOMÁTICA DE DELIMITADOR (";" o ",")
+        let sugeridoParsed = Papa.parse(sugeridoText, { header: true, skipEmptyLines: true }).data;
+        let saldoParsed = Papa.parse(saldoText, { header: true, skipEmptyLines: true }).data;
         
         let dataMap = {};
 
-        sugeridoRaw.forEach(row => {
+        sugeridoParsed.forEach(row => {
             let grpName = (row["Grupo"] || "").trim();
             if(!grpName) return;
             dataMap[grpName] = {
@@ -89,9 +80,12 @@ function loadCSVData() {
             };
         });
 
-        saldoRaw.forEach(row => {
+        saldoParsed.forEach(row => {
             let grpName = (row["Grupo"] || "").trim();
             if(dataMap[grpName]) {
+                let s_ec = parseFloat(row["SaldoUND_EC"]) || 0;
+                let s_ds = parseFloat(row["SaldoUND_DS"]) || 0;
+                
                 let dateEC = excelToDate(row["UltFecha_EC"]);
                 let dateDS = excelToDate(row["UltFecha_DS"]);
                 let d_ec = dateEC ? calcularDias(dateEC) : -1;
@@ -103,10 +97,8 @@ function loadCSVData() {
                     estilo: (row["Estilo ID"] || "").trim(),
                     desc: (row["ProdNombre"] || "").trim(),
                     marca: (row["Marca"] || "").trim(),
-                    s_aec: parseFloat(row["SaldoUND_EC"]) || 0,
-                    s_ds: parseFloat(row["SaldoUND_DS"]) || 0,
-                    f_ec: formatearFecha(dateEC),
-                    f_ds: formatearFecha(dateDS),
+                    s_aec: s_ec, s_ds: s_ds,
+                    f_ec: formatearFecha(dateEC), f_ds: formatearFecha(dateDS),
                     max_age: max_age
                 });
                 if(max_age > dataMap[grpName].max_age) dataMap[grpName].max_age = max_age;
@@ -118,7 +110,7 @@ function loadCSVData() {
 
         setupFilters();
         renderDashboard(dataBase);
-    }).catch(e => console.error("Error cargando archivos:", e));
+    });
 }
 
 function renderDashboard(data) {
@@ -136,25 +128,24 @@ function renderDashboard(data) {
 
         let col7, col8;
         if (currentView === 'gerencial') {
-            let cobVal = nec > 0 ? (saldo / nec) * 100 : (saldo > 0 ? 999 : 100);
-            col7 = nec > 0 ? cobVal.toFixed(1) + '%' : '> 100%';
+            let cobVal = nec > 0 ? (saldo / nec) * 100 : (saldo > 0 ? 101 : 0);
+            col7 = nec > 0 ? cobVal.toFixed(1) + '%' : (saldo > 0 ? '> 100%' : '0%');
+            
             if (nec === 0 && saldo > 0) { col8 = label('Sano', 'bg-verde'); kpi.m3++; }
-            else if (cobVal < 50) { col8 = label('Comprar Urgente', 'bg-rojo'); kpi.m1++; }
+            else if (cobVal < 50) { col8 = label('Urgente', 'bg-rojo'); kpi.m1++; }
             else if (cobVal <= 100) { col8 = label('En Tiempo', 'bg-amarillo'); kpi.m2++; }
             else { col8 = label('Sano', 'bg-verde'); kpi.m3++; }
         } else {
             let surtir = Math.min(saldo, nec);
             let falta = nec - saldo;
-            col7 = `<b>📦 ${surtir}</b>${falta > 0 ? `<br><small class='text-danger'>Faltan: ${falta}</small>` : ''}`;
-            let r = excepcionesGrupo[row.grp] || reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
+            col7 = `<b>📦 ${surtir}</b>${falta > 0 ? `<br><small class='text-danger'>Falta: ${falta}</small>` : ''}`;
+            
+            let r = reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
             if (nec === 0) { col8 = label('Completado', 'bg-verde'); kpi.m4++; }
             else if (saldo === 0) { col8 = label('Quiebre', 'bg-rojo'); kpi.m1++; }
             else if (saldo <= r.limiteFantasma && row.max_age > 90) { col8 = label('Residual', 'bg-gris'); kpi.m4++; }
-            else if (saldo < nec) { col8 = label('Faltante', 'bg-rojo'); kpi.m1++; }
-            else if (nec >= r.minUrgencia) { col8 = label('Prioridad', 'bg-rojo'); kpi.m2++; }
             else { col8 = label('Por Surtir', 'bg-amarillo'); kpi.m2++; }
         }
-
         mainTable.row.add([`<b>${row.grp}</b><br><small>${row.grp_id}</small>`, row.div, saldo, row.n_aec, row.n_may, row.n_ds, nec, col7, col8]);
     });
     mainTable.draw();
@@ -162,43 +153,87 @@ function renderDashboard(data) {
     updateCharts(divSummary, kpi);
 }
 
-// FUNCIONES AUXILIARES
-function label(t, c) { return `<span class="status-pill ${c}">${t}</span>`; }
-
-function excelToDate(s) {
-    if (!s || isNaN(s)) return null;
-    return new Date(Math.round((s - 25569) * 86400 * 1000));
-}
-
-function formatearFecha(d) { return d ? `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}` : ""; }
-
-function calcularDias(d) { return d ? Math.ceil(Math.abs(TODAY - d) / 86400000) : -1; }
-
-function getAgeCategory(a) {
-    if (a < 0) return "Sin Dato";
-    if (a <= 30) return "Reciente";
-    if (a <= 90) return "Normal";
-    if (a <= 180) return "Lento";
-    return "Estancado";
-}
-
-function updateKPIs(s, n, k) {
-    $('#kpiSaldo').text(s.toLocaleString());
-    $('#kpiNec').text(n.toLocaleString());
-    if (currentView === 'gerencial') {
-        $('#lblCritico').text('Urgente'); $('#kpiCriticos').text(k.m1);
-        $('#lblAjustado').text('En Tiempo'); $('#kpiAjustados').text(k.m2);
-        $('#lblOptimo').text('Sano'); $('#kpiOptimos').text(k.m3);
-    } else {
-        $('#lblCritico').text('Quiebre'); $('#kpiCriticos').text(k.m1);
-        $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(k.m2);
-        $('#lblOptimo').text('Completado'); $('#kpiOptimos').text(k.m4);
-    }
+function setupFilters() {
+    const fill = (id, field) => {
+        let items = [...new Set(dataBase.map(i => i[field]))].sort();
+        $(id).empty().append(items.map(i => new Option(i, i)));
+    };
+    fill('#f_div', 'div'); fill('#f_cat', 'cat'); fill('#f_grp', 'grp');
+    $('#f_div, #f_cat, #f_grp, #f_age').on('change', () => {
+        let f = { d: $('#f_div').val(), c: $('#f_cat').val(), g: $('#f_grp').val(), a: $('#f_age').val() };
+        let filtered = dataBase.filter(r => 
+            (!f.d.length || f.d.includes(r.div)) && (!f.c.length || f.c.includes(r.cat)) &&
+            (!f.g.length || f.g.includes(r.grp)) && (!f.a.length || f.a.includes(r.age_cat))
+        );
+        renderDashboard(filtered);
+    });
 }
 
 function switchView(v) {
     currentView = v;
     $('.view-btn').removeClass('active');
     $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active');
+    
+    // Cambiar nombres de columnas dinámicamente
+    if(v === 'gerencial') {
+        $($('#mainTable thead th')[7]).text('% Cobertura');
+        $($('#mainTable thead th')[8]).text('Estado Gerencial');
+    } else {
+        $($('#mainTable thead th')[7]).html('A Surtir');
+        $($('#mainTable thead th')[8]).text('Prioridad Picking');
+    }
     renderDashboard(dataBase);
 }
+
+// UTILIDADES
+function label(t, c) { return `<span class="status-pill ${c}">${t}</span>`; }
+function excelToDate(s) { return s > 0 ? new Date(Math.round((s - 25569) * 86400 * 1000)) : null; }
+function formatearFecha(d) { return d ? `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}` : ""; }
+function calcularDias(d) { return Math.ceil(Math.abs(TODAY - d) / 86400000); }
+function getAgeCategory(a) {
+    if (a < 0) return "Sin Dato";
+    if (a <= 30) return "Reciente (0-30 días)";
+    if (a <= 90) return "Stock Normal (31-90 días)";
+    if (a <= 180) return "Lento Mov. (91-180 días)";
+    return "Estancado (>180 días)";
+}
+function updateKPIs(s, n, k) {
+    $('#kpiSaldo').text(s.toLocaleString()); $('#kpiNec').text(n.toLocaleString());
+    if (currentView === 'gerencial') {
+        $('#lblCritico').text('Urgente'); $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('En Tiempo'); $('#kpiAjustados').text(k.m2);
+        $('#lblOptimo').text('Sano'); $('#kpiOptimos').text(k.m3);
+    } else {
+        $('#lblCritico').text('Quiebre'); $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('Surtir'); $('#kpiAjustados').text(k.m2);
+        $('#lblOptimo').text('Completado'); $('#kpiOptimos').text(k.m4);
+    }
+}
+function updateCharts(divs, k) {
+    let sorted = Object.entries(divs).sort((a,b) => b[1] - a[1]).slice(0,10);
+    if(necessityChart) necessityChart.destroy();
+    necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), {
+        type: 'bar',
+        data: { labels: sorted.map(i => i[0]), datasets: [{ label: 'Necesidad', data: sorted.map(i => i[1]), backgroundColor: '#E1251B' }] },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+    if(statusChart) statusChart.destroy();
+    statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), {
+        type: 'doughnut',
+        data: { labels: ['Urgente/Quiebre', 'En Tiempo/Surtir', 'Sano/Completado'], datasets: [{ data: [k.m1, k.m2, k.m3+k.m4], backgroundColor: ['#f8d7da', '#fff3cd', '#d1e7dd'] }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+}
+function openDrillDown(g) {
+    $('#mainScreen').addClass('hidden-screen'); $('#drillDownScreen').removeClass('hidden-screen');
+    $('#detailDivCat').text(`${g.div} > ${g.cat}`); $('#detailGroupName').text(g.grp);
+    $('#detNecAEC').text(g.n_aec); $('#detNecMay').text(g.n_may); $('#detNecDS').text(g.n_ds);
+    $('#detNecGlobal').text(g.n_aec + g.n_may + g.n_ds); $('#detSaldoTotal').text(g.s_aec + g.s_ds);
+    skuTable.clear();
+    g.skus.forEach(s => {
+        let t = s.s_aec + s.s_ds;
+        skuTable.row.add([`<b>${s.cod}</b>`, s.estilo, s.desc, s.marca, s.f_ec, s.s_aec, s.f_ds, s.s_ds, t, t>0 ? label('Si','bg-verde'):label('No','bg-rojo')]);
+    });
+    skuTable.draw();
+}
+function closeDrillDown() { $('#drillDownScreen').addClass('hidden-screen'); $('#mainScreen').removeClass('hidden-screen'); }
