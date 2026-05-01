@@ -19,18 +19,15 @@ const reglasLogisticas = {
     "DEFAULT": { limiteFantasma: 50, minUrgencia: 100 } 
 };
 
-// EXCEPCIONES POR GRUPO EXACTO (Ignoran la regla de la división)
 const excepcionesGrupo = {
     "CARROS DE BATERIA": { limiteFantasma: 0, minUrgencia: 1 },
     "BICICLETAS": { limiteFantasma: 0, minUrgencia: 1 }
 };
 
-
 // ==========================================
 // INICIALIZACIÓN (DOCUMENT READY)
 // ==========================================
 $(document).ready(function() {
-    // 1. Inicializar Tabla Principal (Matriz) con centrado de celdas
     mainTable = $('#mainTable').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 10,
@@ -43,7 +40,6 @@ $(document).ready(function() {
         }
     });
 
-    // 2. Inicializar Tabla de Detalle (SKUs)
     skuTable = $('#skuTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 10,
@@ -52,17 +48,14 @@ $(document).ready(function() {
         ]
     });
 
-    // 3. Inicializar Select2 para los filtros
     $('#f_div, #f_cat, #f_grp, #f_age').select2({ 
         theme: 'bootstrap-5', 
         width: '100%', 
         placeholder: "Seleccionar..." 
     });
 
-    // 4. Iniciar la carga y cruce de datos CSV
     loadCSVData();
 
-    // 5. Eventos de Filtro en Cascada
     $('#f_div, #f_cat, #f_grp, #f_age').on('change', function() {
         if ($(this).attr('id') === 'f_div') {
             updateSubFilters();
@@ -70,7 +63,6 @@ $(document).ready(function() {
         applyFilters();
     });
 
-    // 6. Clic en fila de Matriz para abrir el Drill-Down
     $('#mainTable tbody').on('click', 'tr', function () {
         let rowData = mainTable.row(this).data();
         if (!rowData) return;
@@ -83,13 +75,11 @@ $(document).ready(function() {
         }
     });
 
-    // 7. Botón Limpiar Filtros
     $('#resetFilters').on('click', function() {
         $('#f_div, #f_cat, #f_grp, #f_age').val(null).trigger('change');
         renderDashboard(dataBase); 
     });
 });
-
 
 // ==========================================
 // LECTURA DE CSV Y SANITIZACIÓN DE DATOS
@@ -162,7 +152,6 @@ function loadCSVData() {
     });
 }
 
-
 // ==========================================
 // LÓGICA DE FILTROS EN CASCADA
 // ==========================================
@@ -201,9 +190,8 @@ function applyFilters() {
     renderDashboard(filtered);
 }
 
-
 // ==========================================
-// RENDERIZADO DUAL DE LA MATRIZ (COMPRAS VS PICKING)
+// RENDERIZADO DUAL DE LA MATRIZ
 // ==========================================
 function renderDashboard(data) {
     mainTable.clear();
@@ -242,7 +230,7 @@ function renderDashboard(data) {
             let surtir = Math.min(s, n);
             let falta = n - s;
             
-            col7 = `<b class="fs-6 text-dark">📦 ${surtir}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Falta: ${falta}</small>`:''}`;
+            col7 = `<b class="fs-6 text-dark">📦 ${surtir}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta}</small>`:''}`;
             
             let r = excepcionesGrupo[row.grp] || reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
             
@@ -278,9 +266,8 @@ function renderDashboard(data) {
     updateUI(tS, tN, k, divSum);
 }
 
-
 // ==========================================
-// ACTUALIZACIÓN DE GRÁFICOS Y KPIS SUPERIORES
+// ACTUALIZACIÓN DE GRÁFICOS Y KPIS
 // ==========================================
 function updateUI(s, n, k, divSum) {
     $('#kpiSaldo').text(Math.round(s).toLocaleString('en-US'));
@@ -369,7 +356,6 @@ function updateUI(s, n, k, divSum) {
     });
 }
 
-
 // ==========================================
 // MANEJO DE LA PANTALLA DRILL-DOWN (SKUs)
 // ==========================================
@@ -423,7 +409,6 @@ function closeDrillDown() {
     $('#mainScreen').removeClass('hidden-screen'); 
 }
 
-
 // ==========================================
 // INTERACCIONES Y UTILIDADES
 // ==========================================
@@ -436,7 +421,7 @@ function switchView(v) {
         $($('#mainTable thead th')[7]).text('% Cobertura');
         $($('#mainTable thead th')[8]).text('Estado Gerencial');
     } else {
-        $($('#mainTable thead th')[7]).html('A Surtir');
+        $($('#mainTable thead th')[7]).html('A Surtir <br><small>(Faltante)</small>');
         $($('#mainTable thead th')[8]).text('Prioridad Picking');
     }
     applyFilters(); 
