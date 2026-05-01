@@ -1,191 +1,340 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plataforma de Abastecimiento - El Compadre</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+// app.js
+Chart.register(ChartDataLabels);
 
-    <style>
-        :root { --brand-red: #E1251B; --brand-blue: #012094; --brand-light: #f4f6f9; }
-        body { background-color: var(--brand-light); font-family: 'Segoe UI', sans-serif; font-size: 0.85rem; }
-        .brand-header { background-color: white; border-bottom: 4px solid var(--brand-red); padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .logo-text { color: var(--brand-blue); font-size: 2.2rem; font-weight: 900; margin: 0; }
-        .slogan { color: var(--brand-red); font-size: 0.85rem; font-weight: bold; text-transform: uppercase; }
-        .card-custom { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: none; }
+let dataBase = [];
+let mainTable, skuTable;
+let necessityChart, statusChart;
+let currentView = 'gerencial'; 
+const TODAY = new Date('2026-04-28'); 
+
+// REGLAS LOGÍSTICAS DE COMPORTAMIENTO (LIMITES FANTASMAS)
+const reglasLogisticas = {
+    "PASEO": { limiteFantasma: 0, minUrgencia: 1 },
+    "HOGAR": { limiteFantasma: 0, minUrgencia: 1 },
+    "ROPA": { limiteFantasma: 12, minUrgencia: 24 },
+    "CALZADO": { limiteFantasma: 12, minUrgencia: 24 },
+    "INTERIOR DETALLE": { limiteFantasma: 24, minUrgencia: 48 },
+    "DEFAULT": { limiteFantasma: 50, minUrgencia: 100 } 
+};
+
+// EXCEPCIONES POR GRUPO EXACTO
+const excepcionesGrupo = {
+    "CARROS DE BATERIA": { limiteFantasma: 0, minUrgencia: 1 },
+    "BICICLETAS": { limiteFantasma: 0, minUrgencia: 1 }
+};
+
+$(document).ready(function() {
+    // 1. Inicializar Tablas con centrado de celdas
+    mainTable = $('#mainTable').DataTable({
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
+        pageLength: 10,
+        lengthMenu: [10, 25, 50, 100],
+        columnDefs: [
+            { className: "text-center align-middle", targets: "_all" }
+        ],
+        createdRow: function(row) { $(row).addClass('clickable-row'); }
+    });
+
+    skuTable = $('#skuTable').DataTable({ 
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
+        pageLength: 10,
+        columnDefs: [
+            { className: "text-center align-middle", targets: "_all" }
+        ]
+    });
+
+    // 2. Select2
+    $('#f_div, #f_cat, #f_grp, #f_age').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Seleccionar..." });
+
+    // 3. Cargar Archivos
+    loadCSVData();
+
+    // 4. Eventos de Filtro en Cascada
+    $('#f_div, #f_cat, #f_grp, #f_age').on('change', function() {
+        if ($(this).attr('id') === 'f_div') updateSubFilters();
+        applyFilters();
+    });
+
+    // 5. Clic para ver Detalles
+    $('#mainTable tbody').on('click', 'tr', function () {
+        let rowData = mainTable.row(this).data();
+        if (!rowData) return;
+        let groupName = rowData[0].split('<br>')[0].replace(/<b>|<\/b>/g, "").trim();
+        let groupData = dataBase.find(d => d.grp === groupName);
+        if (groupData) openDrillDown(groupData);
+    });
+
+    // 6. Limpiar
+    $('#resetFilters').on('click', function() {
+        $('#f_div, #f_cat, #f_grp, #f_age').val(null).trigger('change');
+        renderDashboard(dataBase); 
+    });
+});
+
+// LECTURA DE CSV Y SANITIZACIÓN DE DATOS
+function loadCSVData() {
+    Promise.all([
+        fetch('sugerido.csv').then(res => res.text()),
+        fetch('saldo.csv').then(res => res.text())
+    ]).then(([sugeridoText, saldoText]) => {
+        let sugeridoRaw = Papa.parse(sugeridoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
+        let saldoRaw = Papa.parse(saldoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
         
-        /* Ajuste de filtros */
-        .select2-container--bootstrap-5 .select2-selection--multiple { min-height: 38px !important; max-height: 100px !important; overflow-y: auto !important; }
+        let dataMap = {};
+        sugeridoRaw.forEach(row => {
+            let grp = (row["Grupo"] || "").trim();
+            if(!grp) return;
+            dataMap[grp] = {
+                div: row["Division"], cat: row["Categoria"], grp_id: row["Grupo ID"], grp: grp,
+                s_aec: parseFloat(row["Saldo CDI01"]) || 0, s_ds: parseFloat(row["Saldo DSCDI"]) || 0,
+                n_aec: parseFloat(row["Necesidad detalle AEC"]) || 0, n_may: parseFloat(row["Necesidad mayoreo AEC"]) || 0,
+                n_ds: parseFloat(row["Necesidad DS"]) || 0, max_age: -1, age_cat: "Sin Dato", skus: []
+            };
+        });
 
-        .status-pill { padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 0.75rem; text-align: center; min-width: 100px; display: inline-block; }
-        .bg-verde { background-color: #d1e7dd; color: #0f5132; border: 1px solid #BADBCC; }
-        .bg-amarillo { background-color: #fff3cd; color: #664d03; border: 1px solid #FFECB5; }
-        .bg-rojo { background-color: #f8d7da; color: #842029; border: 1px solid #F5C2C7; }
-        .bg-gris { background-color: #e9ecef; color: #495057; border: 1px solid #ced4da; }
+        saldoRaw.forEach(row => {
+            let grp = (row["Grupo"] || "").trim();
+            if(dataMap[grp]) {
+                let dEC = excelToDate(row["UltFecha_EC"]);
+                let dDS = excelToDate(row["UltFecha_DS"]);
+                let age = Math.max(calcularDias(dEC), calcularDias(dDS));
+                
+                // Agregamos todo el detalle exacto a la matriz de SKUs
+                dataMap[grp].skus.push({ 
+                    cod: row["Producto"], 
+                    estilo: row["Estilo ID"], 
+                    marca: row["Marca"], 
+                    desc: row["ProdNombre"], 
+                    s_aec: parseFloat(row["SaldoUND_EC"]) || 0, 
+                    s_ds: parseFloat(row["SaldoUND_DS"]) || 0,
+                    f_ec: formatearFecha(dEC), 
+                    f_ds: formatearFecha(dDS),
+                    age: age
+                });
 
-        table.dataTable thead th { background-color: var(--brand-blue) !important; color: white !important; text-align: center !important; vertical-align: middle; }
-        .clickable-row { cursor: pointer; transition: background-color 0.2s; }
-        .clickable-row:hover { background-color: rgba(1, 32, 148, 0.05) !important; }
-        .chart-container { height: 320px; position: relative; }
-        
-        #mainScreen, #drillDownScreen { transition: opacity 0.3s; }
-        .hidden-screen { display: none !important; }
-        
-        .view-switch { border: 2px solid var(--brand-red); border-radius: 30px; overflow: hidden; display: flex; width: fit-content; background: white;}
-        .view-btn { padding: 10px 25px; border: none; background: transparent; font-weight: bold; color: var(--brand-red); cursor: pointer; transition: 0.3s; }
-        .view-btn.active { background: var(--brand-red); color: white; }
-    </style>
-</head>
-<body>
+                if(age > dataMap[grp].max_age) dataMap[grp].max_age = age;
+            }
+        });
 
-<div class="brand-header">
-    <div>
-        <h1 class="logo-text">El Compadre</h1>
-        <div class="slogan">Centro de Control de Inventario Logístico</div>
-    </div>
-    <div class="text-end d-flex align-items-center">
-        <div class="view-switch me-4 shadow-sm">
-            <button id="btnGerencial" class="view-btn active" onclick="switchView('gerencial')"><i class="fa-solid fa-briefcase me-2"></i>Vista Gerencial (Compras)</button>
-            <button id="btnOperativo" class="view-btn" onclick="switchView('operativo')"><i class="fa-solid fa-boxes-packing me-2"></i>Vista Operativa (Picking)</button>
-        </div>
-        <span class="badge bg-primary fs-6">📅 28 Abr 2026</span>
-    </div>
-</div>
+        dataBase = Object.values(dataMap);
+        dataBase.forEach(g => { g.age_cat = getAgeCategory(g.max_age); });
 
-<div class="container-fluid px-4" id="mainScreen">
-    <!-- FILTROS DINÁMICOS -->
-    <div class="card-custom border-top border-danger border-3 py-3 mb-3 shadow-sm">
-        <div class="row g-3">
-            <div class="col-md-2"><label class="fw-bold mb-1 small">📁 División</label><select id="f_div" class="form-select" multiple></select></div>
-            <div class="col-md-3"><label class="fw-bold mb-1 small">🛍️ Categoría</label><select id="f_cat" class="form-select" multiple></select></div>
-            <div class="col-md-3"><label class="fw-bold mb-1 small">📦 Grupo</label><select id="f_grp" class="form-select" multiple></select></div>
-            <div class="col-md-2"><label class="fw-bold mb-1 small">⏳ Antigüedad</label><select id="f_age" class="form-select" multiple>
-                <option value="Reciente">Reciente (0-30 días)</option>
-                <option value="Normal">Stock Normal (31-90 días)</option>
-                <option value="Lento">Lento Mov. (91-180 días)</option>
-                <option value="Estancado">Estancado (>180 días)</option>
-            </select></div>
-            <div class="col-md-2 d-flex align-items-end"><button id="resetFilters" class="btn btn-danger w-100 fw-bold shadow-sm">Limpiar Filtros</button></div>
-        </div>
-    </div>
+        initFilters();
+        renderDashboard(dataBase);
+    }).catch(error => {
+        console.error("Error al cargar los archivos CSV:", error);
+        alert("Ocurrió un error leyendo los archivos CSV. Revisa la consola.");
+    });
+}
 
-    <!-- KPIs PRINCIPALES -->
-    <div class="row mb-3">
-        <div class="col-md-3"><div class="card-custom text-center p-3 border-bottom border-primary border-4 shadow-sm">
-            <div class="small fw-bold text-muted text-uppercase">Saldo Bodega Total</div>
-            <h3 class="fw-bold text-primary mb-0" id="kpiSaldo">0</h3>
-        </div></div>
-        <div class="col-md-3"><div class="card-custom text-center p-3 border-bottom border-danger border-4 shadow-sm">
-            <div class="small fw-bold text-muted text-uppercase">Necesidad Global Total</div>
-            <h3 class="fw-bold text-danger mb-0" id="kpiNec">0</h3>
-        </div></div>
-        <div class="col-md-6"><div class="card-custom p-3 d-flex justify-content-around text-center shadow-sm">
-            <div><div class="small fw-bold text-muted text-uppercase" id="lblCritico">Urgente</div><h3 class="text-danger mb-0" id="kpiCriticos">0</h3></div>
-            <div><div class="small fw-bold text-muted text-uppercase" id="lblAjustado">En Tiempo</div><h3 class="text-warning mb-0" id="kpiAjustados">0</h3></div>
-            <div><div class="small fw-bold text-muted text-uppercase" id="lblOptimo">Sano</div><h3 class="text-success mb-0" id="kpiOptimos">0</h3></div>
-        </div></div>
-    </div>
+// LOGICA DE FILTROS EN CASCADA
+function initFilters() {
+    let divs = [...new Set(dataBase.map(i => i.div))].sort();
+    $('#f_div').empty().append(divs.map(i => new Option(i, i)));
+    updateSubFilters();
+}
 
-    <!-- GRÁFICOS -->
-    <div class="row mb-4">
-        <div class="col-md-7"><div class="card-custom shadow-sm"><h6 class="fw-bold text-primary mb-3"><i class="fa-solid fa-chart-bar me-2"></i>Top 10 Necesidad por División</h6><div class="chart-container"><canvas id="chartNecessity"></canvas></div></div></div>
-        <div class="col-md-5"><div class="card-custom shadow-sm"><h6 class="fw-bold text-primary mb-3"><i class="fa-solid fa-heart-pulse me-2"></i>Salud del Inventario</h6><div class="chart-container"><canvas id="chartStatus"></canvas></div></div></div>
-    </div>
+function updateSubFilters() {
+    let selectedDivs = $('#f_div').val() || [];
+    let filteredData = selectedDivs.length ? dataBase.filter(d => selectedDivs.includes(d.div)) : dataBase;
+    
+    let cats = [...new Set(filteredData.map(i => i.cat))].sort();
+    let grps = [...new Set(filteredData.map(i => i.grp))].sort();
+    
+    $('#f_cat').empty().append(cats.map(i => new Option(i, i)));
+    $('#f_grp').empty().append(grps.map(i => new Option(i, i)));
+}
 
-    <!-- TABLA MAESTRA -->
-    <div class="card-custom p-0 overflow-hidden shadow-sm">
-        <div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center">
-            <h6 class="m-0 fw-bold"><i class="fa-solid fa-table me-2"></i>Matriz de Abastecimiento y Antigüedad</h6>
-            <span class="badge bg-primary fs-6"><i class="fa-solid fa-mouse-pointer me-1"></i>Clic en un Grupo para ver detalle</span>
-        </div>
-        <div class="table-responsive p-3">
-            <table id="mainTable" class="table table-hover w-100 align-middle">
-                <thead>
-                    <tr>
-                        <th>Grupo / ID</th>
-                        <th>División</th>
-                        <th>Saldo</th>
-                        <th>Nec. AEC</th>
-                        <th>Mayoreo</th>
-                        <th>Nec. DS</th>
-                        <th>Total Nec.</th>
-                        <th id="thMetrica">% Cobertura</th>
-                        <th id="thEstado">Estado</th>
-                    </tr>
-                </thead>
-                <tbody class="text-center"></tbody>
-            </table>
-        </div>
-    </div>
-</div>
+function applyFilters() {
+    let f = { d: $('#f_div').val() || [], c: $('#f_cat').val() || [], g: $('#f_grp').val() || [], a: $('#f_age').val() || [] };
+    let filtered = dataBase.filter(r => 
+        (!f.d.length || f.d.includes(r.div)) && (!f.c.length || f.c.includes(r.cat)) &&
+        (!f.g.length || f.g.includes(r.grp)) && (!f.a.length || f.a.includes(r.age_cat))
+    );
+    renderDashboard(filtered);
+}
 
-<!-- VENTANA DE DETALLE (DRILL DOWN) -->
-<div class="container-fluid px-4 hidden-screen" id="drillDownScreen">
-    <div class="card-custom bg-primary text-white d-flex justify-content-between align-items-center p-4 shadow mb-3">
-        <div>
-            <div class="text-uppercase small fw-bold" id="detailDivCat" style="opacity: 0.9;"></div>
-            <h2 class="fw-bold mb-0" id="detailGroupName"></h2>
-        </div>
-        <button class="btn btn-light fw-bold text-primary shadow-sm" onclick="closeDrillDown()">
-            <i class="fa-solid fa-arrow-left me-2"></i>Volver a Matriz
-        </button>
-    </div>
+// RENDERIZADO DUAL DE LA MATRIZ (COMPRAS VS PICKING)
+function renderDashboard(data) {
+    mainTable.clear();
+    let tS = 0, tN = 0, k = { m1: 0, m2: 0, m3: 0, m4: 0 }, divSum = {};
 
-    <!-- TARJETAS DE RESUMEN DEL GRUPO -->
-    <div class="row g-3 mb-3">
-        <div class="col-md-3"><div class="card-custom text-center border-start border-info border-4 shadow-sm">
-            <div class="small fw-bold text-muted text-uppercase">Necesidad del Grupo</div>
-            <h3 class="fw-bold text-dark mb-0" id="detNecTotal">0</h3>
-        </div></div>
-        <div class="col-md-3"><div class="card-custom text-center border-start border-primary border-4 shadow-sm">
-            <div class="small fw-bold text-muted text-uppercase">Saldo Total</div>
-            <h3 class="fw-bold text-primary mb-0" id="detSaldoTotal">0</h3>
-        </div></div>
-        <div class="col-md-3"><div class="card-custom text-center border-start border-danger border-4 shadow-sm">
-            <div class="small fw-bold text-muted text-uppercase">Faltante Real</div>
-            <h3 class="fw-bold text-danger mb-0" id="detFaltante">0</h3>
-        </div></div>
-        <div class="col-md-3"><div class="card-custom text-center border-start border-success border-4 shadow-sm">
-            <div class="small fw-bold text-muted text-uppercase">Estatus Grupo</div>
-            <div id="detEstadoBadge" class="mt-1"></div>
-        </div></div>
-    </div>
+    data.forEach(row => {
+        let s = row.s_aec + row.s_ds;
+        let n = Math.round(row.n_aec + row.n_may + row.n_ds);
+        tS += s; tN += n;
+        divSum[row.div] = (divSum[row.div] || 0) + n;
 
-    <!-- TABLA DE SKUs -->
-    <div class="card-custom p-0 overflow-hidden shadow-sm">
-        <div class="p-3 bg-light border-bottom"><h6 class="m-0 fw-bold text-primary"><i class="fa-solid fa-barcode me-2"></i>Desglose Granular por Códigos (SKUs)</h6></div>
-        <div class="table-responsive p-3">
-            <table id="skuTable" class="table table-striped table-hover w-100 align-middle">
-                <thead class="table-dark">
-                    <tr>
-                        <th>SKU</th>
-                        <th>Estilo</th>
-                        <th>Descripción</th>
-                        <th>Marca</th>
-                        <th>Saldo AEC</th>
-                        <th>Saldo DS</th>
-                        <th>Total</th>
-                        <th>Estado</th>
-                    </tr>
-                </thead>
-                <tbody class="text-center"></tbody>
-            </table>
-        </div>
-    </div>
-</div>
+        let col7, col8;
+        if (currentView === 'gerencial') {
+            let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
+            col7 = n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>');
+            
+            if (n === 0 && s > 0) { col8 = label('Sano','bg-verde'); k.m3++; }
+            else if (cob < 50) { col8 = label('Comprar Urgente','bg-rojo'); k.m1++; }
+            else if (cob <= 100) { col8 = label('En Tiempo','bg-amarillo'); k.m2++; }
+            else { col8 = label('Sano','bg-verde'); k.m3++; }
+        } else {
+            let surtir = Math.min(s, n);
+            let falta = n - s;
+            col7 = `<b class="fs-6 text-dark">📦 ${surtir}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta}</small>`:''}`;
+            
+            let r = excepcionesGrupo[row.grp] || reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
+            if (n === 0) { col8 = label('Completado','bg-verde'); k.m4++; }
+            else if (s === 0) { col8 = label('Quiebre','bg-rojo'); k.m1++; }
+            else if (s <= r.limiteFantasma && row.max_age > 90) { col8 = label('Residual','bg-gris'); k.m4++; }
+            else if (s < n) { col8 = label('Faltante','bg-rojo'); k.m1++; }
+            else if (n >= r.minUrgencia) { col8 = label('Prioridad Alta','bg-rojo'); k.m2++; }
+            else { col8 = label('Surtido Normal','bg-amarillo'); k.m2++; }
+        }
 
-<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="app.js"></script>
-</body>
-</html>
+        // Fila construida con los valores resaltados
+        mainTable.row.add([
+            `<b>${row.grp}</b><br><small class="text-muted">${row.grp_id}</small>`, 
+            row.div, 
+            `<b class="text-primary fs-6">${s}</b>`, 
+            row.n_aec, 
+            row.n_may, 
+            row.n_ds, 
+            `<b class="text-danger fs-6">${n}</b>`, 
+            col7, 
+            col8
+        ]);
+    });
+    
+    mainTable.draw();
+    updateUI(tS, tN, k, divSum);
+}
+
+// ACTUALIZACIÓN DE GRÁFICOS Y KPIS SUPERIORES
+function updateUI(s, n, k, divSum) {
+    $('#kpiSaldo').text(Math.round(s).toLocaleString('en-US'));
+    $('#kpiNec').text(Math.round(n).toLocaleString('en-US'));
+
+    if (currentView === 'gerencial') {
+        $('#lblCritico').text('Comprar Urgente'); $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('En Tiempo'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
+        $('#lblOptimo').text('Cobertura Sana'); $('#kpiOptimos').text(k.m3);
+    } else {
+        $('#lblCritico').text('Quiebre / Faltante'); $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
+        $('#lblOptimo').text('Residual / Completado'); $('#kpiOptimos').text(k.m4);
+    }
+
+    let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
+    
+    if(necessityChart) necessityChart.destroy();
+    necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), {
+        type: 'bar',
+        data: { labels: sorted.map(i => i[0]), datasets: [{ label: 'Necesidad', data: sorted.map(i => i[1]), backgroundColor: 'rgba(225, 37, 27, 0.85)', borderColor: '#E1251B', borderWidth: 1 }] },
+        options: { 
+            responsive: true, maintainAspectRatio: false,
+            plugins: { datalabels: { anchor: 'end', align: 'top', formatter: (v) => Math.round(v).toLocaleString('en-US'), font: { weight: 'bold', size: 10 }, color: '#E1251B' }, legend: { display: false } },
+            scales: { x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } } }
+        }
+    });
+
+    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Residual'];
+    let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#f8d7da', '#ffc107', '#e9ecef'];
+
+    if(statusChart) statusChart.destroy();
+    statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), {
+        type: 'doughnut',
+        data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4], backgroundColor: colorsPie, borderWidth: 2 }] },
+        options: { 
+            responsive: true, maintainAspectRatio: false, cutout: '65%',
+            plugins: { 
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                datalabels: {
+                    formatter: (value, ctx) => {
+                        let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                        let percentage = (value * 100 / sum).toFixed(1) + "%";
+                        return value > 0 ? percentage : '';
+                    },
+                    color: '#444', font: { weight: 'bold' }
+                }
+            } 
+        }
+    });
+}
+
+// MANEJO DE LA PANTALLA DRILL-DOWN (SKUs)
+function openDrillDown(g) {
+    $('#mainScreen').addClass('hidden-screen');
+    $('#drillDownScreen').removeClass('hidden-screen');
+    
+    $('#detailDivCat').text(`${g.div} > ${g.cat}`);
+    $('#detailGroupName').text(g.grp);
+    
+    let nT = Math.round(g.n_aec + g.n_may + g.n_ds);
+    let sT = Math.round(g.s_aec + g.s_ds);
+    let fT = nT - sT > 0 ? nT - sT : 0;
+
+    $('#detNecTotal').text(nT.toLocaleString('en-US'));
+    $('#detSaldoTotal').text(sT.toLocaleString('en-US'));
+    
+    if (currentView === 'gerencial') {
+        $('#detFaltanteTitle').text('Cobertura');
+        let cob = nT > 0 ? (sT / nT * 100).toFixed(1) + '%' : '> 100%';
+        $('#detFaltante').text(cob).removeClass('text-danger').addClass('text-dark');
+    } else {
+        $('#detFaltanteTitle').text('Faltante Operativo');
+        $('#detFaltante').text(fT.toLocaleString('en-US')).removeClass('text-dark').addClass('text-danger');
+    }
+
+    let bHtml = nT === 0 ? label('Completado','bg-verde') : (sT === 0 ? label('Sin Stock','bg-rojo') : label('En Proceso','bg-amarillo'));
+    $('#detEstadoBadge').html(bHtml);
+
+    skuTable.clear();
+    g.skus.forEach(s => {
+        let t = s.s_aec + s.s_ds;
+        skuTable.row.add([
+            `<span class="fw-bold text-primary">${s.cod}</span>`, 
+            s.estilo || '', 
+            `<small>${s.desc}</small>`, 
+            s.marca || '', 
+            s.f_ec || '', 
+            s.s_aec, 
+            s.f_ds || '', 
+            s.s_ds, 
+            `<span class="fw-bold fs-6">${t}</span>`, 
+            t > 0 ? label('Sí','bg-verde') : label('No','bg-rojo')
+        ]);
+    });
+    skuTable.draw();
+}
+
+// CERRAR VENTANA DETALLE
+function closeDrillDown() { 
+    $('#drillDownScreen').addClass('hidden-screen'); 
+    $('#mainScreen').removeClass('hidden-screen'); 
+}
+
+// CAMBIO DE VISTAS Y ENCABEZADOS
+function switchView(v) {
+    currentView = v; 
+    $('.view-btn').removeClass('active'); 
+    $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active');
+    
+    if(v === 'gerencial') {
+        $($('#mainTable thead th')[7]).text('% Cobertura');
+        $($('#mainTable thead th')[8]).text('Estado Gerencial');
+    } else {
+        $($('#mainTable thead th')[7]).html('A Surtir');
+        $($('#mainTable thead th')[8]).text('Prioridad Picking');
+    }
+    applyFilters(); 
+}
+
+// UTILIDADES MATEMÁTICAS
+function excelToDate(s) { return s > 0 ? new Date(Math.round((s - 25569) * 86400 * 1000)) : null; }
+function formatearFecha(d) { return d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}` : ""; }
+function calcularDias(d) { return d ? Math.ceil(Math.abs(TODAY - d) / 86400000) : -1; }
+function label(t, c) { return `<span class="status-pill ${c}">${t}</span>`; }
+function getAgeCategory(a) { 
+    if (a < 0) return "Sin Dato"; 
+    if (a <= 30) return "Reciente (0-30 días)"; 
+    if (a <= 90) return "Stock Normal (31-90 días)"; 
+    if (a <= 180) return "Lento Mov. (91-180 días)"; 
+    return "Estancado (>180 días)"; 
+}
