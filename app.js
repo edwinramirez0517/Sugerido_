@@ -64,7 +64,6 @@ $(document).ready(function() {
 
     // 5. Eventos de Filtro en Cascada
     $('#f_div, #f_cat, #f_grp, #f_age').on('change', function() {
-        // Si cambia la división, actualizamos qué categorías y grupos se muestran
         if ($(this).attr('id') === 'f_div') {
             updateSubFilters();
         }
@@ -76,7 +75,6 @@ $(document).ready(function() {
         let rowData = mainTable.row(this).data();
         if (!rowData) return;
         
-        // Limpiamos la celda HTML para extraer solo el nombre del Grupo
         let groupName = rowData[0].split('<br>')[0].replace(/<b>|<\/b>/g, "").trim();
         let groupData = dataBase.find(d => d.grp === groupName);
         
@@ -101,13 +99,11 @@ function loadCSVData() {
         fetch('sugerido.csv').then(res => res.text()),
         fetch('saldo.csv').then(res => res.text())
     ]).then(([sugeridoText, saldoText]) => {
-        // Usamos PapaParse con delimitador automático (o forzado a punto y coma)
         let sugeridoRaw = Papa.parse(sugeridoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
         let saldoRaw = Papa.parse(saldoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
         
         let dataMap = {};
 
-        // 1. Armar la base con sugerido.csv
         sugeridoRaw.forEach(row => {
             let grp = (row["Grupo"] || "").trim();
             if(!grp) return;
@@ -128,7 +124,6 @@ function loadCSVData() {
             };
         });
 
-        // 2. Anidar el detalle granular desde saldo.csv
         saldoRaw.forEach(row => {
             let grp = (row["Grupo"] || "").trim();
             if(dataMap[grp]) {
@@ -154,13 +149,11 @@ function loadCSVData() {
             }
         });
 
-        // 3. Convertir el mapa a un array plano para DataTables y calcular Antigüedad Global
         dataBase = Object.values(dataMap);
         dataBase.forEach(g => { 
             g.age_cat = getAgeCategory(g.max_age); 
         });
 
-        // 4. Llenar los filtros e iniciar el Dashboard
         initFilters();
         renderDashboard(dataBase);
     }).catch(error => {
@@ -216,8 +209,8 @@ function renderDashboard(data) {
     mainTable.clear();
     
     let tS = 0, tN = 0;
-    let k = { m1: 0, m2: 0, m3: 0, m4: 0 }; // Métricas para KPIs
-    let divSum = {}; // Para el gráfico de barras
+    let k = { m1: 0, m2: 0, m3: 0, m4: 0 }; 
+    let divSum = {}; 
 
     data.forEach(row => {
         let s = row.s_aec + row.s_ds;
@@ -231,7 +224,6 @@ function renderDashboard(data) {
 
         let col7, col8;
 
-        // VISTA GERENCIAL (S&OP)
         if (currentView === 'gerencial') {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
             col7 = n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>');
@@ -246,7 +238,6 @@ function renderDashboard(data) {
                 col8 = label('Sano','bg-verde'); k.m3++; 
             }
             
-        // VISTA OPERATIVA (WMS / PICKING)
         } else {
             let surtir = Math.min(s, n);
             let falta = n - s;
@@ -270,7 +261,6 @@ function renderDashboard(data) {
             }
         }
 
-        // Construir la fila con valores resaltados
         mainTable.row.add([
             `<b>${row.grp}</b><br><small class="text-muted">${row.grp_id}</small>`, 
             row.div, 
@@ -293,11 +283,9 @@ function renderDashboard(data) {
 // ACTUALIZACIÓN DE GRÁFICOS Y KPIS SUPERIORES
 // ==========================================
 function updateUI(s, n, k, divSum) {
-    // Top KPIs Numéricos
     $('#kpiSaldo').text(Math.round(s).toLocaleString('en-US'));
     $('#kpiNec').text(Math.round(n).toLocaleString('en-US'));
 
-    // Títulos y Colores de KPIs según Vista
     if (currentView === 'gerencial') {
         $('#lblCritico').text('Comprar Urgente'); 
         $('#kpiCriticos').text(k.m1);
@@ -314,7 +302,6 @@ function updateUI(s, n, k, divSum) {
         $('#kpiOptimos').text(k.m4);
     }
 
-    // Gráfico de Barras (Top 10 Divisiones)
     let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
     
     if(necessityChart) necessityChart.destroy();
@@ -349,7 +336,6 @@ function updateUI(s, n, k, divSum) {
         }
     });
 
-    // Gráfico de Dona (Salud del Inventario)
     let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Residual'];
     let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#f8d7da', '#ffc107', '#e9ecef'];
 
@@ -391,11 +377,9 @@ function openDrillDown(g) {
     $('#mainScreen').addClass('hidden-screen');
     $('#drillDownScreen').removeClass('hidden-screen');
     
-    // Encabezados
     $('#detailDivCat').text(`${g.div} > ${g.cat}`);
     $('#detailGroupName').text(g.grp);
     
-    // Matemáticas para las Tarjetas Superiores
     let nT = Math.round(g.n_aec + g.n_may + g.n_ds);
     let sT = Math.round(g.s_aec + g.s_ds);
     let fT = nT - sT > 0 ? nT - sT : 0;
@@ -415,7 +399,6 @@ function openDrillDown(g) {
     let bHtml = nT === 0 ? label('Completado','bg-verde') : (sT === 0 ? label('Sin Stock','bg-rojo') : label('En Proceso','bg-amarillo'));
     $('#detEstadoBadge').html(bHtml);
 
-    // Llenar tabla SKUs
     skuTable.clear();
     g.skus.forEach(s => {
         let t = s.s_aec + s.s_ds;
