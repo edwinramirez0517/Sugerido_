@@ -19,17 +19,15 @@
         .slogan { color: var(--brand-red); font-size: 0.85rem; font-weight: bold; text-transform: uppercase; }
         .card-custom { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: none; }
         
-        /* Ajuste de filtros */
         .select2-container--bootstrap-5 .select2-selection--multiple { min-height: 38px !important; max-height: 100px !important; overflow-y: auto !important; }
 
-        /* Semáforos visuales */
-        .status-pill { padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 0.75rem; text-align: center; min-width: 100px; display: inline-block; }
+        .status-pill { padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 0.75rem; text-align: center; min-width: 110px; display: inline-block; }
         .bg-verde { background-color: #d1e7dd; color: #0f5132; border: 1px solid #BADBCC; }
         .bg-amarillo { background-color: #fff3cd; color: #664d03; border: 1px solid #FFECB5; }
         .bg-rojo { background-color: #f8d7da; color: #842029; border: 1px solid #F5C2C7; }
         .bg-gris { background-color: #e9ecef; color: #495057; border: 1px solid #ced4da; }
+        .bg-morado { background-color: #e0cffc; color: #5f3dc4; border: 1px solid #b197fc; } /* Nuevo color para Sobre-stock */
 
-        /* Ajustes de Tablas */
         table.dataTable thead th { background-color: var(--brand-blue) !important; color: white !important; text-align: center !important; vertical-align: middle; }
         .clickable-row { cursor: pointer; transition: background-color 0.2s; }
         .clickable-row:hover { background-color: rgba(1, 32, 148, 0.05) !important; }
@@ -185,7 +183,6 @@
     </div>
 </div>
 
-<!-- LIBRERÍAS JAVASCRIPT -->
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -194,8 +191,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-
-<!-- ARCHIVO LÓGICO DEL REPORTE -->
 <script src="app.js"></script>
 </body>
 </html>
