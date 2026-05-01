@@ -1,140 +1,204 @@
-// ==========================================
-// RENDERIZADO DUAL (GERENCIAL VS OPERATIVO)
-// ==========================================
-function processDataAndPopulateUI(data) {
+// app.js
+Chart.register(ChartDataLabels);
+
+let dataBase = [];
+let mainTable, skuTable;
+let necessityChart, statusChart;
+let currentView = 'gerencial'; 
+
+const TODAY = new Date('2026-04-28'); 
+
+// REGLAS LOGÍSTICAS POR DIVISIÓN
+const reglasLogisticas = {
+    "PASEO": { limiteFantasma: 0, minUrgencia: 1 },
+    "HOGAR": { limiteFantasma: 0, minUrgencia: 1 },
+    "JUGUETERIA": { limiteFantasma: 0, minUrgencia: 2 },
+    "ROPA": { limiteFantasma: 12, minUrgencia: 24 },
+    "CALZADO": { limiteFantasma: 12, minUrgencia: 24 },
+    "INTERIOR DETALLE": { limiteFantasma: 24, minUrgencia: 48 },
+    "DEFAULT": { limiteFantasma: 50, minUrgencia: 100 } 
+};
+
+// EXCEPCIONES POR NOMBRE DE GRUPO EXACTO
+const excepcionesGrupo = {
+    "CARROS DE BATERIA": { limiteFantasma: 0, minUrgencia: 1 },
+    "BICICLETAS": { limiteFantasma: 0, minUrgencia: 1 }
+};
+
+$(document).ready(function() {
+    initUI();
+    loadCSVData();
+});
+
+function initUI() {
+    $('#f_div, #f_cat, #f_grp, #f_age').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Seleccionar..." });
+
+    mainTable = $('#mainTable').DataTable({
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
+        responsive: true,
+        pageLength: 10,
+        lengthMenu: [10, 25, 50, 100],
+        createdRow: function(row) { $(row).addClass('clickable-row'); }
+    });
+
+    skuTable = $('#skuTable').DataTable({
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
+        responsive: true, pageLength: 10
+    });
+
+    $('#mainTable tbody').on('click', 'tr', function () {
+        let rowData = mainTable.row(this).data();
+        if (!rowData) return;
+        let groupName = rowData[0].split('<br>')[0].replace(/<b>|<\/b>/g, "").trim();
+        let groupData = dataBase.find(d => d.grp === groupName);
+        if (groupData) openDrillDown(groupData);
+    });
+
+    $('#resetFilters').on('click', function() {
+        $('#f_div, #f_cat, #f_grp, #f_age').val(null).trigger('change');
+        renderDashboard(dataBase); 
+    });
+}
+
+// CARGA Y CRUCE DE DATOS
+function loadCSVData() {
+    Promise.all([
+        fetch('sugerido.csv').then(res => res.text()),
+        fetch('saldo.csv').then(res => res.text())
+    ]).then(([sugeridoText, saldoText]) => {
+        // Configuramos PapaParse para usar ";" como delimitador según el análisis de tus archivos
+        let sugeridoRaw = Papa.parse(sugeridoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
+        let saldoRaw = Papa.parse(saldoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
+        
+        let dataMap = {};
+
+        sugeridoRaw.forEach(row => {
+            let grpName = (row["Grupo"] || "").trim();
+            if(!grpName) return;
+            dataMap[grpName] = {
+                div: (row["Division"] || "").trim(),
+                cat: (row["Categoria"] || "").trim(),
+                grp_id: (row["Grupo ID"] || "").trim(),
+                grp: grpName,
+                s_aec: parseFloat(row["Saldo CDI01"]) || 0,
+                s_ds: parseFloat(row["Saldo DSCDI"]) || 0,
+                n_aec: parseFloat(row["Necesidad detalle AEC"]) || 0,
+                n_may: parseFloat(row["Necesidad mayoreo AEC"]) || 0,
+                n_ds: parseFloat(row["Necesidad DS"]) || 0,
+                max_age: -1, age_cat: "Sin Dato", skus: []
+            };
+        });
+
+        saldoRaw.forEach(row => {
+            let grpName = (row["Grupo"] || "").trim();
+            if(dataMap[grpName]) {
+                let dateEC = excelToDate(row["UltFecha_EC"]);
+                let dateDS = excelToDate(row["UltFecha_DS"]);
+                let d_ec = dateEC ? calcularDias(dateEC) : -1;
+                let d_ds = dateDS ? calcularDias(dateDS) : -1;
+                let max_age = Math.max(d_ec, d_ds);
+
+                dataMap[grpName].skus.push({
+                    cod: (row["Producto"] || "").trim(),
+                    estilo: (row["Estilo ID"] || "").trim(),
+                    desc: (row["ProdNombre"] || "").trim(),
+                    marca: (row["Marca"] || "").trim(),
+                    s_aec: parseFloat(row["SaldoUND_EC"]) || 0,
+                    s_ds: parseFloat(row["SaldoUND_DS"]) || 0,
+                    f_ec: formatearFecha(dateEC),
+                    f_ds: formatearFecha(dateDS),
+                    max_age: max_age
+                });
+                if(max_age > dataMap[grpName].max_age) dataMap[grpName].max_age = max_age;
+            }
+        });
+
+        dataBase = Object.values(dataMap);
+        dataBase.forEach(g => { g.age_cat = getAgeCategory(g.max_age); });
+
+        setupFilters();
+        renderDashboard(dataBase);
+    }).catch(e => console.error("Error cargando archivos:", e));
+}
+
+function renderDashboard(data) {
     mainTable.clear();
     let totalSaldo = 0, totalNec = 0;
-    
-    // Contadores para KPIs
-    let metric1 = 0, metric2 = 0, metric3 = 0, metric4 = 0; 
-    let divisionesNec = {};
+    let kpi = { m1: 0, m2: 0, m3: 0, m4: 0 }; 
+    let divSummary = {};
 
     data.forEach(row => {
         let saldo = row.s_aec + row.s_ds;
-        let necGlobal = row.n_aec + row.n_may + row.n_ds;
-        
-        totalSaldo += saldo;
-        totalNec += necGlobal;
-        
-        if(!divisionesNec[row.div]) divisionesNec[row.div] = 0;
-        divisionesNec[row.div] += necGlobal;
+        let nec = row.n_aec + row.n_may + row.n_ds;
+        totalSaldo += saldo; totalNec += nec;
+        if(!divSummary[row.div]) divSummary[row.div] = 0;
+        divSummary[row.div] += nec;
 
-        let metrica7, metrica8;
-
-        // -----------------------------------------------------
-        // 1. LÓGICA DE COMPRAS (VISTA GERENCIAL)
-        // -----------------------------------------------------
+        let col7, col8;
         if (currentView === 'gerencial') {
-            
-            // Si no hay necesidad, pero hay saldo, la cobertura es "Infinita" (>100%)
-            let coberturaVal = necGlobal > 0 ? (saldo / necGlobal) * 100 : (saldo > 0 ? 999 : 100);
-            metrica7 = necGlobal > 0 ? coberturaVal.toFixed(1) + '%' : '> 100%';
-            
-            if (necGlobal === 0 && saldo > 0) {
-                metrica8 = '<span class="status-pill bg-verde">Sobre-stock / Sano</span>'; metric3++;
-            } else if (coberturaVal < 50) { 
-                metrica8 = '<span class="status-pill bg-rojo">Comprar Urgente</span>'; metric1++; 
-            } else if (coberturaVal <= 100) { 
-                metrica8 = '<span class="status-pill bg-amarillo">En Tiempo</span>'; metric2++; 
-            } else { 
-                metrica8 = '<span class="status-pill bg-verde">Cobertura Sana</span>'; metric3++; 
-            }
-
-        // -----------------------------------------------------
-        // 2. LÓGICA DE PICKING WMS (VISTA OPERATIVA)
-        // -----------------------------------------------------
+            let cobVal = nec > 0 ? (saldo / nec) * 100 : (saldo > 0 ? 999 : 100);
+            col7 = nec > 0 ? cobVal.toFixed(1) + '%' : '> 100%';
+            if (nec === 0 && saldo > 0) { col8 = label('Sano', 'bg-verde'); kpi.m3++; }
+            else if (cobVal < 50) { col8 = label('Comprar Urgente', 'bg-rojo'); kpi.m1++; }
+            else if (cobVal <= 100) { col8 = label('En Tiempo', 'bg-amarillo'); kpi.m2++; }
+            else { col8 = label('Sano', 'bg-verde'); kpi.m3++; }
         } else {
-            // Unidades físicas que el bodeguero SÍ puede sacar hoy (lo menor entre saldo y necesidad)
-            let aSurtir = Math.min(saldo, necGlobal);
-            // Unidades que no se pueden cumplir (venta perdida)
-            let deficit = necGlobal - saldo;
-            let deficitReal = deficit > 0 ? deficit : 0; 
-
-            // Reemplazamos la vista de "Déficit 0" por una orden de empaque visual
-            metrica7 = `<div class="fw-bold fs-6">📦 ${aSurtir}</div>`;
-            if (deficitReal > 0) {
-                metrica7 += `<small class="text-danger fw-bold">Faltan: ${deficitReal}</small>`;
-            }
-
-            // Consultar las reglas de la división
-            let regla = excepcionesGrupo[row.grp] || reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
-            
-            if (necGlobal === 0) {
-                metrica8 = '<span class="status-pill bg-verde">Completado</span>'; metric4++;
-            } else if (saldo === 0) {
-                metrica8 = '<span class="status-pill bg-rojo">Quiebre (Saldo 0)</span>'; metric1++;
-            } else if (saldo <= regla.limiteFantasma && row.max_age > 90) {
-                metrica8 = '<span class="status-pill bg-gris">Residual (Fantasma)</span>'; metric4++; 
-            } else if (saldo < necGlobal) {
-                metrica8 = '<span class="status-pill bg-rojo">Faltante Parcial</span>'; metric1++;
-            } else if (necGlobal >= regla.minUrgencia) {
-                metrica8 = '<span class="status-pill" style="background-color:#fd7e14; color:white; border:1px solid #e8590c;">Prioridad Alta</span>'; metric2++;
-            } else {
-                metrica8 = '<span class="status-pill bg-amarillo">Surtido Normal</span>'; metric2++;
-            }
+            let surtir = Math.min(saldo, nec);
+            let falta = nec - saldo;
+            col7 = `<b>📦 ${surtir}</b>${falta > 0 ? `<br><small class='text-danger'>Faltan: ${falta}</small>` : ''}`;
+            let r = excepcionesGrupo[row.grp] || reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
+            if (nec === 0) { col8 = label('Completado', 'bg-verde'); kpi.m4++; }
+            else if (saldo === 0) { col8 = label('Quiebre', 'bg-rojo'); kpi.m1++; }
+            else if (saldo <= r.limiteFantasma && row.max_age > 90) { col8 = label('Residual', 'bg-gris'); kpi.m4++; }
+            else if (saldo < nec) { col8 = label('Faltante', 'bg-rojo'); kpi.m1++; }
+            else if (nec >= r.minUrgencia) { col8 = label('Prioridad', 'bg-rojo'); kpi.m2++; }
+            else { col8 = label('Por Surtir', 'bg-amarillo'); kpi.m2++; }
         }
 
-        mainTable.row.add([
-            `<b>${row.grp}</b> <br><small class="text-muted">${row.grp_id}</small>`,
-            row.div, saldo, row.n_aec, row.n_may, row.n_ds, necGlobal,
-            metrica7, metrica8
-        ]);
+        mainTable.row.add([`<b>${row.grp}</b><br><small>${row.grp_id}</small>`, row.div, saldo, row.n_aec, row.n_may, row.n_ds, nec, col7, col8]);
     });
-
     mainTable.draw();
+    updateKPIs(totalSaldo, totalNec, kpi);
+    updateCharts(divSummary, kpi);
+}
 
-    // Actualizar KPIs superiores
-    $('#kpiSaldo').text(totalSaldo.toLocaleString('en-US'));
-    $('#kpiNec').text(totalNec.toLocaleString('en-US'));
+// FUNCIONES AUXILIARES
+function label(t, c) { return `<span class="status-pill ${c}">${t}</span>`; }
 
+function excelToDate(s) {
+    if (!s || isNaN(s)) return null;
+    return new Date(Math.round((s - 25569) * 86400 * 1000));
+}
+
+function formatearFecha(d) { return d ? `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}` : ""; }
+
+function calcularDias(d) { return d ? Math.ceil(Math.abs(TODAY - d) / 86400000) : -1; }
+
+function getAgeCategory(a) {
+    if (a < 0) return "Sin Dato";
+    if (a <= 30) return "Reciente";
+    if (a <= 90) return "Normal";
+    if (a <= 180) return "Lento";
+    return "Estancado";
+}
+
+function updateKPIs(s, n, k) {
+    $('#kpiSaldo').text(s.toLocaleString());
+    $('#kpiNec').text(n.toLocaleString());
     if (currentView === 'gerencial') {
-        $('#lblCritico').text('Comprar Urgente'); $('#kpiCriticos').text(metric1);
-        $('#lblAjustado').text('En Tiempo'); $('#kpiAjustados').text(metric2).attr('class', 'fw-bold mb-0 text-warning');
-        $('#lblOptimo').text('Cobertura Sana'); $('#kpiOptimos').text(metric3);
+        $('#lblCritico').text('Urgente'); $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('En Tiempo'); $('#kpiAjustados').text(k.m2);
+        $('#lblOptimo').text('Sano'); $('#kpiOptimos').text(k.m3);
     } else {
-        $('#lblCritico').text('Quiebre / Faltante'); $('#kpiCriticos').text(metric1);
-        $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(metric2).attr('class', 'fw-bold mb-0 text-warning'); 
-        $('#lblOptimo').text('Residual / Completado'); $('#kpiOptimos').text(metric4);
+        $('#lblCritico').text('Quiebre'); $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(k.m2);
+        $('#lblOptimo').text('Completado'); $('#kpiOptimos').text(k.m4);
     }
-
-    updateCharts(divisionesNec, metric1, metric2, (metric3 + metric4));
 }
 
-function updateCharts(divisionesNec, m1, m2, m3) {
-    let sortedDivs = Object.entries(divisionesNec).sort((a,b) => b[1] - a[1]).slice(0,10);
-    
-    if(necessityChart) necessityChart.destroy();
-    necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), {
-        type: 'bar',
-        data: { labels: sortedDivs.map(i => i[0]), datasets: [{ label: 'Necesidad Global', data: sortedDivs.map(i => i[1]), backgroundColor: '#E1251B' }] },
-        options: { responsive: true, maintainAspectRatio: false }
-    });
-
-    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Residual'];
-    let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#f8d7da', '#ffc107', '#e9ecef'];
-
-    if(statusChart) statusChart.destroy();
-    statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), {
-        type: 'doughnut',
-        data: { labels: labelsPie, datasets: [{ data: [m1, m2, m3], backgroundColor: colorsPie }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-    });
-}
-
-function switchView(view) {
-    currentView = view;
+function switchView(v) {
+    currentView = v;
     $('.view-btn').removeClass('active');
-    
-    // Cambiar dinámicamente los encabezados de la tabla HTML
-    if (view === 'gerencial') {
-        $('#btnGerencial').addClass('active');
-        $($('#mainTable thead th')[7]).html('% Cobertura');
-        $($('#mainTable thead th')[8]).html('Estado Gerencial');
-    } else {
-        $('#btnOperativo').addClass('active');
-        $($('#mainTable thead th')[7]).html('A Surtir <br><small>(Faltante)</small>');
-        $($('#mainTable thead th')[8]).html('Prioridad Picking');
-    }
-    
-    processDataAndPopulateUI(dataBase); // Recalcular todo
+    $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active');
+    renderDashboard(dataBase);
 }
