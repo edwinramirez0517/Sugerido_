@@ -18,12 +18,7 @@
         .slogan { color: var(--brand-red); font-size: 0.85rem; font-weight: bold; text-transform: uppercase; }
         .card-custom { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: none; }
         
-        /* FIX SELECT2 RELAJO VISUAL */
-        .select2-container--bootstrap-5 .select2-selection--multiple {
-            min-height: 38px !important;
-            max-height: 100px !important;
-            overflow-y: auto !important;
-        }
+        .select2-container--bootstrap-5 .select2-selection--multiple { min-height: 38px !important; max-height: 100px !important; overflow-y: auto !important; }
 
         .status-pill { padding: 5px 10px; border-radius: 20px; font-weight: bold; font-size: 0.75rem; text-align: center; min-width: 90px; display: inline-block; }
         .bg-verde { background-color: #d1e7dd; color: #0f5132; border: 1px solid #BADBCC; }
@@ -32,9 +27,13 @@
         .bg-gris { background-color: #e9ecef; color: #495057; border: 1px solid #ced4da; }
 
         table.dataTable thead th { background-color: var(--brand-blue) !important; color: white !important; position: sticky; top: 0; z-index: 10; white-space: nowrap; text-align: center !important;}
+        .clickable-row { cursor: pointer; transition: background-color 0.2s; }
+        .clickable-row:hover { background-color: rgba(1, 32, 148, 0.05) !important; }
         .chart-container { height: 320px; position: relative; }
         
+        #mainScreen, #drillDownScreen { transition: opacity 0.3s; }
         .hidden-screen { display: none !important; }
+        
         .view-switch { border: 2px solid var(--brand-red); border-radius: 30px; overflow: hidden; display: flex; width: fit-content; margin: 0 auto; background: white;}
         .view-btn { padding: 10px 25px; border: none; background: transparent; font-weight: bold; color: var(--brand-red); cursor: pointer; transition: 0.3s; font-size: 0.95rem;}
         .view-btn.active { background: var(--brand-red); color: white; }
@@ -49,60 +48,75 @@
     </div>
     <div class="text-end d-flex align-items-center">
         <div class="view-switch me-4">
-            <button id="btnGerencial" class="view-btn active" onclick="switchView('gerencial')"><i class="fa-solid fa-briefcase"></i>Vista Gerencial (Compras)</button>
-            <button id="btnOperativo" class="view-btn" onclick="switchView('operativo')"><i class="fa-solid fa-boxes-packing"></i>Vista Operativa (Picking)</button>
+            <button id="btnGerencial" class="view-btn active" onclick="switchView('gerencial')"><i class="fa-solid fa-briefcase me-2"></i>Vista Gerencial (Compras)</button>
+            <button id="btnOperativo" class="view-btn" onclick="switchView('operativo')"><i class="fa-solid fa-boxes-packing me-2"></i>Vista Operativa (Picking)</button>
         </div>
         <span class="badge bg-primary fs-6">📅 28 Abr 2026</span>
     </div>
 </div>
 
 <div class="container-fluid px-4" id="mainScreen">
+    <!-- FILTROS -->
     <div class="card-custom border-top border-danger border-3 py-3 mb-3">
         <div class="row g-3">
-            <div class="col-md-2"><label class="fw-bold">📁 División</label><select id="f_div" class="form-select" multiple></select></div>
-            <div class="col-md-3"><label class="fw-bold">🛍️ Categoría</label><select id="f_cat" class="form-select" multiple></select></div>
-            <div class="col-md-3"><label class="fw-bold">📦 Grupo</label><select id="f_grp" class="form-select" multiple></select></div>
-            <div class="col-md-2"><label class="fw-bold">⏳ Antigüedad</label><select id="f_age" class="form-select" multiple>
+            <div class="col-md-2"><label class="fw-bold mb-1">📁 División</label><select id="f_div" class="form-select" multiple></select></div>
+            <div class="col-md-3"><label class="fw-bold mb-1">🛍️ Categoría</label><select id="f_cat" class="form-select" multiple></select></div>
+            <div class="col-md-3"><label class="fw-bold mb-1">📦 Grupo</label><select id="f_grp" class="form-select" multiple></select></div>
+            <div class="col-md-2"><label class="fw-bold mb-1">⏳ Antigüedad</label><select id="f_age" class="form-select" multiple>
                 <option value="Reciente (0-30 días)">Reciente (0-30 días)</option>
                 <option value="Stock Normal (31-90 días)">Stock Normal (31-90 días)</option>
                 <option value="Lento Mov. (91-180 días)">Lento Mov. (91-180 días)</option>
                 <option value="Estancado (>180 días)">Estancado (>180 días)</option>
             </select></div>
-            <div class="col-md-2 d-flex align-items-end"><button id="resetFilters" class="btn btn-danger w-100 fw-bold">Limpiar Filtros</button></div>
+            <div class="col-md-2 d-flex align-items-end"><button id="resetFilters" class="btn btn-danger w-100 fw-bold"><i class="fa-solid fa-filter-circle-xmark me-1"></i> Limpiar Filtros</button></div>
         </div>
     </div>
 
+    <!-- KPIs -->
     <div class="row mb-3">
-        <div class="col-md-3"><div class="card-custom text-center p-3"><div>Saldo Bodega</div><h3 class="fw-bold text-primary" id="kpiSaldo">0</h3></div></div>
-        <div class="col-md-3"><div class="card-custom text-center p-3"><div>Necesidad Global</div><h3 class="fw-bold text-danger" id="kpiNec">0</h3></div></div>
+        <div class="col-md-3"><div class="card-custom text-center p-3" style="border-bottom: 4px solid var(--brand-blue);"><div class="small fw-bold text-muted text-uppercase">Saldo Bodega Total</div><h3 class="fw-bold text-primary mb-0" id="kpiSaldo">0</h3></div></div>
+        <div class="col-md-3"><div class="card-custom text-center p-3" style="border-bottom: 4px solid var(--brand-red);"><div class="small fw-bold text-muted text-uppercase">Necesidad Global Total</div><h3 class="fw-bold text-danger mb-0" id="kpiNec">0</h3></div></div>
         <div class="col-md-6"><div class="card-custom p-3 d-flex justify-content-around text-center">
-            <div><div id="lblCritico">Urgente</div><h3 class="text-danger" id="kpiCriticos">0</h3></div>
-            <div><div id="lblAjustado">En Tiempo</div><h3 class="text-warning" id="kpiAjustados">0</h3></div>
-            <div><div id="lblOptimo">Sano</div><h3 class="text-success" id="kpiOptimos">0</h3></div>
+            <div><div class="small fw-bold text-muted text-uppercase" id="lblCritico">Urgente</div><h3 class="text-danger mb-0" id="kpiCriticos">0</h3></div>
+            <div><div class="small fw-bold text-muted text-uppercase" id="lblAjustado">En Tiempo</div><h3 class="text-warning mb-0" id="kpiAjustados">0</h3></div>
+            <div><div class="small fw-bold text-muted text-uppercase" id="lblOptimo">Sano</div><h3 class="text-success mb-0" id="kpiOptimos">0</h3></div>
         </div></div>
     </div>
 
+    <!-- GRAFICOS -->
     <div class="row mb-4">
-        <div class="col-md-7"><div class="card-custom"><h6 class="fw-bold text-primary">Top 10 Necesidad por División</h6><div class="chart-container"><canvas id="chartNecessity"></canvas></div></div></div>
-        <div class="col-md-5"><div class="card-custom"><h6 class="fw-bold text-primary">Salud del Inventario</h6><div class="chart-container"><canvas id="chartStatus"></canvas></div></div></div>
+        <div class="col-md-7"><div class="card-custom"><h6 class="fw-bold text-primary mb-3"><i class="fa-solid fa-chart-bar me-2"></i>Top 10 Necesidad por División</h6><div class="chart-container"><canvas id="chartNecessity"></canvas></div></div></div>
+        <div class="col-md-5"><div class="card-custom"><h6 class="fw-bold text-primary mb-3"><i class="fa-solid fa-heart-pulse me-2"></i>Salud del Inventario</h6><div class="chart-container"><canvas id="chartStatus"></canvas></div></div></div>
     </div>
 
+    <!-- TABLA PRINCIPAL -->
     <div class="card-custom p-0 overflow-hidden">
+        <div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center">
+            <h6 class="m-0 fw-bold"><i class="fa-solid fa-table me-2"></i>Matriz de Abastecimiento</h6>
+            <span class="badge bg-primary fs-6"><i class="fa-solid fa-mouse-pointer me-1"></i>Haz clic en un grupo para ver SKUs</span>
+        </div>
         <div class="table-responsive p-3">
             <table id="mainTable" class="table table-striped w-100">
-                <thead><tr><th>Grupo / ID</th><th>División</th><th>Saldo</th><th>Nec. AEC</th><th>Mayoreo</th><th>Nec. DS</th><th>Total Nec.</th><th>Métrica</th><th>Estado</th></tr></thead>
+                <thead><tr><th>Grupo / ID</th><th>División</th><th>Saldo</th><th>Nec. AEC</th><th>Mayoreo</th><th>Nec. DS</th><th>Total Nec.</th><th id="thMetrica">% Cobertura</th><th id="thEstado">Estado Gerencial</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
     </div>
 </div>
 
+<!-- DRILL DOWN (DETALLE SKU) -->
 <div class="container-fluid px-4 hidden-screen" id="drillDownScreen">
-    <div class="card-custom bg-primary text-white d-flex justify-content-between align-items-center">
-        <div><small id="detailDivCat"></small><h2 id="detailGroupName"></h2></div>
-        <button class="btn btn-light fw-bold" onclick="closeDrillDown()">Volver</button>
+    <div class="card-custom bg-primary text-white d-flex justify-content-between align-items-center p-4">
+        <div><div class="text-uppercase small fw-bold" id="detailDivCat" style="opacity: 0.8;"></div><h2 class="fw-bold mb-0" id="detailGroupName"></h2></div>
+        <button class="btn btn-light fw-bold text-primary" onclick="closeDrillDown()"><i class="fa-solid fa-arrow-left me-2"></i>Volver a Matriz</button>
     </div>
-    <div class="card-custom p-0"><div class="table-responsive p-3"><table id="skuTable" class="table table-striped w-100"><thead><tr><th>SKU</th><th>Estilo</th><th>Descripción</th><th>Marca</th><th>Fecha AEC</th><th>Saldo AEC</th><th>Fecha DS</th><th>Saldo DS</th><th>Total</th><th>Disp.</th></tr></thead><tbody></tbody></table></div></div>
+    <div class="card-custom p-0 overflow-hidden">
+        <div class="p-3 bg-light border-bottom"><h6 class="m-0 fw-bold"><i class="fa-solid fa-barcode me-2"></i>Desglose de Códigos (SKUs) y Fechas FIFO</h6></div>
+        <div class="table-responsive p-3"><table id="skuTable" class="table table-striped table-hover w-100">
+            <thead><tr><th>SKU</th><th>Estilo</th><th>Descripción</th><th>Marca</th><th>Fecha AEC</th><th>Saldo AEC</th><th>Fecha DS</th><th>Saldo DS</th><th>Total</th><th>Disponibilidad</th></tr></thead>
+            <tbody></tbody>
+        </table></div>
+    </div>
 </div>
 
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
