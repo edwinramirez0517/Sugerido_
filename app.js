@@ -1,4 +1,6 @@
-// app.js
+// ==========================================
+// CONFIGURACIÓN INICIAL
+// ==========================================
 Chart.register(ChartDataLabels);
 
 let dataBase = [];
@@ -7,7 +9,7 @@ let necessityChart, statusChart;
 let currentView = 'gerencial'; 
 const TODAY = new Date('2026-04-28'); 
 
-// REGLAS LOGÍSTICAS DE COMPORTAMIENTO (LIMITES FANTASMAS)
+// REGLAS LOGÍSTICAS DE COMPORTAMIENTO (LIMITES FANTASMAS Y URGENCIA)
 const reglasLogisticas = {
     "PASEO": { limiteFantasma: 0, minUrgencia: 1 },
     "HOGAR": { limiteFantasma: 0, minUrgencia: 1 },
@@ -17,14 +19,18 @@ const reglasLogisticas = {
     "DEFAULT": { limiteFantasma: 50, minUrgencia: 100 } 
 };
 
-// EXCEPCIONES POR GRUPO EXACTO
+// EXCEPCIONES POR GRUPO EXACTO (Ignoran la regla de la división)
 const excepcionesGrupo = {
     "CARROS DE BATERIA": { limiteFantasma: 0, minUrgencia: 1 },
     "BICICLETAS": { limiteFantasma: 0, minUrgencia: 1 }
 };
 
+
+// ==========================================
+// INICIALIZACIÓN (DOCUMENT READY)
+// ==========================================
 $(document).ready(function() {
-    // 1. Inicializar Tablas con centrado de celdas
+    // 1. Inicializar Tabla Principal (Matriz) con centrado de celdas
     mainTable = $('#mainTable').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 10,
@@ -32,9 +38,12 @@ $(document).ready(function() {
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }
         ],
-        createdRow: function(row) { $(row).addClass('clickable-row'); }
+        createdRow: function(row) { 
+            $(row).addClass('clickable-row'); 
+        }
     });
 
+    // 2. Inicializar Tabla de Detalle (SKUs)
     skuTable = $('#skuTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 10,
@@ -43,55 +52,83 @@ $(document).ready(function() {
         ]
     });
 
-    // 2. Select2
-    $('#f_div, #f_cat, #f_grp, #f_age').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Seleccionar..." });
+    // 3. Inicializar Select2 para los filtros
+    $('#f_div, #f_cat, #f_grp, #f_age').select2({ 
+        theme: 'bootstrap-5', 
+        width: '100%', 
+        placeholder: "Seleccionar..." 
+    });
 
-    // 3. Cargar Archivos
+    // 4. Iniciar la carga y cruce de datos CSV
     loadCSVData();
 
-    // 4. Eventos de Filtro en Cascada
+    // 5. Eventos de Filtro en Cascada
     $('#f_div, #f_cat, #f_grp, #f_age').on('change', function() {
-        if ($(this).attr('id') === 'f_div') updateSubFilters();
+        // Si cambia la división, actualizamos qué categorías y grupos se muestran
+        if ($(this).attr('id') === 'f_div') {
+            updateSubFilters();
+        }
         applyFilters();
     });
 
-    // 5. Clic para ver Detalles
+    // 6. Clic en fila de Matriz para abrir el Drill-Down
     $('#mainTable tbody').on('click', 'tr', function () {
         let rowData = mainTable.row(this).data();
         if (!rowData) return;
+        
+        // Limpiamos la celda HTML para extraer solo el nombre del Grupo
         let groupName = rowData[0].split('<br>')[0].replace(/<b>|<\/b>/g, "").trim();
         let groupData = dataBase.find(d => d.grp === groupName);
-        if (groupData) openDrillDown(groupData);
+        
+        if (groupData) {
+            openDrillDown(groupData);
+        }
     });
 
-    // 6. Limpiar
+    // 7. Botón Limpiar Filtros
     $('#resetFilters').on('click', function() {
         $('#f_div, #f_cat, #f_grp, #f_age').val(null).trigger('change');
         renderDashboard(dataBase); 
     });
 });
 
+
+// ==========================================
 // LECTURA DE CSV Y SANITIZACIÓN DE DATOS
+// ==========================================
 function loadCSVData() {
     Promise.all([
         fetch('sugerido.csv').then(res => res.text()),
         fetch('saldo.csv').then(res => res.text())
     ]).then(([sugeridoText, saldoText]) => {
+        // Usamos PapaParse con delimitador automático (o forzado a punto y coma)
         let sugeridoRaw = Papa.parse(sugeridoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
         let saldoRaw = Papa.parse(saldoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
         
         let dataMap = {};
+
+        // 1. Armar la base con sugerido.csv
         sugeridoRaw.forEach(row => {
             let grp = (row["Grupo"] || "").trim();
             if(!grp) return;
+            
             dataMap[grp] = {
-                div: row["Division"], cat: row["Categoria"], grp_id: row["Grupo ID"], grp: grp,
-                s_aec: parseFloat(row["Saldo CDI01"]) || 0, s_ds: parseFloat(row["Saldo DSCDI"]) || 0,
-                n_aec: parseFloat(row["Necesidad detalle AEC"]) || 0, n_may: parseFloat(row["Necesidad mayoreo AEC"]) || 0,
-                n_ds: parseFloat(row["Necesidad DS"]) || 0, max_age: -1, age_cat: "Sin Dato", skus: []
+                div: (row["Division"] || "").trim(), 
+                cat: (row["Categoria"] || "").trim(), 
+                grp_id: (row["Grupo ID"] || "").trim(), 
+                grp: grp,
+                s_aec: parseFloat(row["Saldo CDI01"]) || 0, 
+                s_ds: parseFloat(row["Saldo DSCDI"]) || 0,
+                n_aec: parseFloat(row["Necesidad detalle AEC"]) || 0, 
+                n_may: parseFloat(row["Necesidad mayoreo AEC"]) || 0,
+                n_ds: parseFloat(row["Necesidad DS"]) || 0, 
+                max_age: -1, 
+                age_cat: "Sin Dato", 
+                skus: []
             };
         });
 
+        // 2. Anidar el detalle granular desde saldo.csv
         saldoRaw.forEach(row => {
             let grp = (row["Grupo"] || "").trim();
             if(dataMap[grp]) {
@@ -99,12 +136,11 @@ function loadCSVData() {
                 let dDS = excelToDate(row["UltFecha_DS"]);
                 let age = Math.max(calcularDias(dEC), calcularDias(dDS));
                 
-                // Agregamos todo el detalle exacto a la matriz de SKUs
                 dataMap[grp].skus.push({ 
-                    cod: row["Producto"], 
-                    estilo: row["Estilo ID"], 
-                    marca: row["Marca"], 
-                    desc: row["ProdNombre"], 
+                    cod: (row["Producto"] || "").trim(), 
+                    estilo: (row["Estilo ID"] || "").trim(), 
+                    marca: (row["Marca"] || "").trim(), 
+                    desc: (row["ProdNombre"] || "").trim(), 
                     s_aec: parseFloat(row["SaldoUND_EC"]) || 0, 
                     s_ds: parseFloat(row["SaldoUND_DS"]) || 0,
                     f_ec: formatearFecha(dEC), 
@@ -112,13 +148,19 @@ function loadCSVData() {
                     age: age
                 });
 
-                if(age > dataMap[grp].max_age) dataMap[grp].max_age = age;
+                if(age > dataMap[grp].max_age) {
+                    dataMap[grp].max_age = age;
+                }
             }
         });
 
+        // 3. Convertir el mapa a un array plano para DataTables y calcular Antigüedad Global
         dataBase = Object.values(dataMap);
-        dataBase.forEach(g => { g.age_cat = getAgeCategory(g.max_age); });
+        dataBase.forEach(g => { 
+            g.age_cat = getAgeCategory(g.max_age); 
+        });
 
+        // 4. Llenar los filtros e iniciar el Dashboard
         initFilters();
         renderDashboard(dataBase);
     }).catch(error => {
@@ -127,7 +169,10 @@ function loadCSVData() {
     });
 }
 
-// LOGICA DE FILTROS EN CASCADA
+
+// ==========================================
+// LÓGICA DE FILTROS EN CASCADA
+// ==========================================
 function initFilters() {
     let divs = [...new Set(dataBase.map(i => i.div))].sort();
     $('#f_div').empty().append(divs.map(i => new Option(i, i)));
@@ -146,49 +191,86 @@ function updateSubFilters() {
 }
 
 function applyFilters() {
-    let f = { d: $('#f_div').val() || [], c: $('#f_cat').val() || [], g: $('#f_grp').val() || [], a: $('#f_age').val() || [] };
+    let f = { 
+        d: $('#f_div').val() || [], 
+        c: $('#f_cat').val() || [], 
+        g: $('#f_grp').val() || [], 
+        a: $('#f_age').val() || [] 
+    };
+    
     let filtered = dataBase.filter(r => 
-        (!f.d.length || f.d.includes(r.div)) && (!f.c.length || f.c.includes(r.cat)) &&
-        (!f.g.length || f.g.includes(r.grp)) && (!f.a.length || f.a.includes(r.age_cat))
+        (!f.d.length || f.d.includes(r.div)) && 
+        (!f.c.length || f.c.includes(r.cat)) &&
+        (!f.g.length || f.g.includes(r.grp)) && 
+        (!f.a.length || f.a.includes(r.age_cat))
     );
+    
     renderDashboard(filtered);
 }
 
+
+// ==========================================
 // RENDERIZADO DUAL DE LA MATRIZ (COMPRAS VS PICKING)
+// ==========================================
 function renderDashboard(data) {
     mainTable.clear();
-    let tS = 0, tN = 0, k = { m1: 0, m2: 0, m3: 0, m4: 0 }, divSum = {};
+    
+    let tS = 0, tN = 0;
+    let k = { m1: 0, m2: 0, m3: 0, m4: 0 }; // Métricas para KPIs
+    let divSum = {}; // Para el gráfico de barras
 
     data.forEach(row => {
         let s = row.s_aec + row.s_ds;
         let n = Math.round(row.n_aec + row.n_may + row.n_ds);
-        tS += s; tN += n;
-        divSum[row.div] = (divSum[row.div] || 0) + n;
+        
+        tS += s; 
+        tN += n;
+        
+        if(!divSum[row.div]) divSum[row.div] = 0;
+        divSum[row.div] += n;
 
         let col7, col8;
+
+        // VISTA GERENCIAL (S&OP)
         if (currentView === 'gerencial') {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
             col7 = n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>');
             
-            if (n === 0 && s > 0) { col8 = label('Sano','bg-verde'); k.m3++; }
-            else if (cob < 50) { col8 = label('Comprar Urgente','bg-rojo'); k.m1++; }
-            else if (cob <= 100) { col8 = label('En Tiempo','bg-amarillo'); k.m2++; }
-            else { col8 = label('Sano','bg-verde'); k.m3++; }
+            if (n === 0 && s > 0) { 
+                col8 = label('Sano','bg-verde'); k.m3++; 
+            } else if (cob < 50) { 
+                col8 = label('Comprar Urgente','bg-rojo'); k.m1++; 
+            } else if (cob <= 100) { 
+                col8 = label('En Tiempo','bg-amarillo'); k.m2++; 
+            } else { 
+                col8 = label('Sano','bg-verde'); k.m3++; 
+            }
+            
+        // VISTA OPERATIVA (WMS / PICKING)
         } else {
             let surtir = Math.min(s, n);
             let falta = n - s;
-            col7 = `<b class="fs-6 text-dark">📦 ${surtir}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta}</small>`:''}`;
+            
+            col7 = `<b class="fs-6 text-dark">📦 ${surtir}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Falta: ${falta}</small>`:''}`;
             
             let r = excepcionesGrupo[row.grp] || reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
-            if (n === 0) { col8 = label('Completado','bg-verde'); k.m4++; }
-            else if (s === 0) { col8 = label('Quiebre','bg-rojo'); k.m1++; }
-            else if (s <= r.limiteFantasma && row.max_age > 90) { col8 = label('Residual','bg-gris'); k.m4++; }
-            else if (s < n) { col8 = label('Faltante','bg-rojo'); k.m1++; }
-            else if (n >= r.minUrgencia) { col8 = label('Prioridad Alta','bg-rojo'); k.m2++; }
-            else { col8 = label('Surtido Normal','bg-amarillo'); k.m2++; }
+            
+            if (n === 0) { 
+                col8 = label('Completado','bg-verde'); k.m4++; 
+            } else if (s === 0) { 
+                col8 = label('Quiebre','bg-rojo'); k.m1++; 
+            } else if (s <= r.limiteFantasma && row.max_age > 90) { 
+                col8 = label('Residual','bg-gris'); k.m4++; 
+            } else if (s < n) { 
+                col8 = label('Faltante','bg-rojo'); k.m1++; 
+            } else if (n >= r.minUrgencia) { 
+                col8 = label('Prioridad Alta','bg-rojo'); k.m2++; 
+            } else { 
+                col8 = label('Surtido Normal','bg-amarillo'); k.m2++; 
+            }
         }
 
-        // Fila construida con los valores resaltados
+        // Construir la fila con valores resaltados
         mainTable.row.add([
             `<b>${row.grp}</b><br><small class="text-muted">${row.grp_id}</small>`, 
             row.div, 
@@ -206,43 +288,86 @@ function renderDashboard(data) {
     updateUI(tS, tN, k, divSum);
 }
 
+
+// ==========================================
 // ACTUALIZACIÓN DE GRÁFICOS Y KPIS SUPERIORES
+// ==========================================
 function updateUI(s, n, k, divSum) {
+    // Top KPIs Numéricos
     $('#kpiSaldo').text(Math.round(s).toLocaleString('en-US'));
     $('#kpiNec').text(Math.round(n).toLocaleString('en-US'));
 
+    // Títulos y Colores de KPIs según Vista
     if (currentView === 'gerencial') {
-        $('#lblCritico').text('Comprar Urgente'); $('#kpiCriticos').text(k.m1);
-        $('#lblAjustado').text('En Tiempo'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
-        $('#lblOptimo').text('Cobertura Sana'); $('#kpiOptimos').text(k.m3);
+        $('#lblCritico').text('Comprar Urgente'); 
+        $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('En Tiempo'); 
+        $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
+        $('#lblOptimo').text('Cobertura Sana'); 
+        $('#kpiOptimos').text(k.m3);
     } else {
-        $('#lblCritico').text('Quiebre / Faltante'); $('#kpiCriticos').text(k.m1);
-        $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
-        $('#lblOptimo').text('Residual / Completado'); $('#kpiOptimos').text(k.m4);
+        $('#lblCritico').text('Quiebre / Faltante'); 
+        $('#kpiCriticos').text(k.m1);
+        $('#lblAjustado').text('Por Surtir'); 
+        $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
+        $('#lblOptimo').text('Residual / Completado'); 
+        $('#kpiOptimos').text(k.m4);
     }
 
+    // Gráfico de Barras (Top 10 Divisiones)
     let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
     
     if(necessityChart) necessityChart.destroy();
     necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), {
         type: 'bar',
-        data: { labels: sorted.map(i => i[0]), datasets: [{ label: 'Necesidad', data: sorted.map(i => i[1]), backgroundColor: 'rgba(225, 37, 27, 0.85)', borderColor: '#E1251B', borderWidth: 1 }] },
+        data: { 
+            labels: sorted.map(i => i[0]), 
+            datasets: [{ 
+                label: 'Necesidad', 
+                data: sorted.map(i => i[1]), 
+                backgroundColor: 'rgba(225, 37, 27, 0.85)', 
+                borderColor: '#E1251B', 
+                borderWidth: 1 
+            }] 
+        },
         options: { 
-            responsive: true, maintainAspectRatio: false,
-            plugins: { datalabels: { anchor: 'end', align: 'top', formatter: (v) => Math.round(v).toLocaleString('en-US'), font: { weight: 'bold', size: 10 }, color: '#E1251B' }, legend: { display: false } },
-            scales: { x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } } }
+            responsive: true, 
+            maintainAspectRatio: false,
+            plugins: { 
+                datalabels: { 
+                    anchor: 'end', 
+                    align: 'top', 
+                    formatter: (v) => Math.round(v).toLocaleString('en-US'), 
+                    font: { weight: 'bold', size: 10 }, 
+                    color: '#E1251B' 
+                }, 
+                legend: { display: false } 
+            },
+            scales: { 
+                x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } } 
+            }
         }
     });
 
+    // Gráfico de Dona (Salud del Inventario)
     let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Residual'];
     let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#f8d7da', '#ffc107', '#e9ecef'];
 
     if(statusChart) statusChart.destroy();
     statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), {
         type: 'doughnut',
-        data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4], backgroundColor: colorsPie, borderWidth: 2 }] },
+        data: { 
+            labels: labelsPie, 
+            datasets: [{ 
+                data: [k.m1, k.m2, k.m3+k.m4], 
+                backgroundColor: colorsPie, 
+                borderWidth: 2 
+            }] 
+        },
         options: { 
-            responsive: true, maintainAspectRatio: false, cutout: '65%',
+            responsive: true, 
+            maintainAspectRatio: false, 
+            cutout: '65%',
             plugins: { 
                 legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
                 datalabels: {
@@ -258,14 +383,19 @@ function updateUI(s, n, k, divSum) {
     });
 }
 
+
+// ==========================================
 // MANEJO DE LA PANTALLA DRILL-DOWN (SKUs)
+// ==========================================
 function openDrillDown(g) {
     $('#mainScreen').addClass('hidden-screen');
     $('#drillDownScreen').removeClass('hidden-screen');
     
+    // Encabezados
     $('#detailDivCat').text(`${g.div} > ${g.cat}`);
     $('#detailGroupName').text(g.grp);
     
+    // Matemáticas para las Tarjetas Superiores
     let nT = Math.round(g.n_aec + g.n_may + g.n_ds);
     let sT = Math.round(g.s_aec + g.s_ds);
     let fT = nT - sT > 0 ? nT - sT : 0;
@@ -285,6 +415,7 @@ function openDrillDown(g) {
     let bHtml = nT === 0 ? label('Completado','bg-verde') : (sT === 0 ? label('Sin Stock','bg-rojo') : label('En Proceso','bg-amarillo'));
     $('#detEstadoBadge').html(bHtml);
 
+    // Llenar tabla SKUs
     skuTable.clear();
     g.skus.forEach(s => {
         let t = s.s_aec + s.s_ds;
@@ -304,13 +435,15 @@ function openDrillDown(g) {
     skuTable.draw();
 }
 
-// CERRAR VENTANA DETALLE
 function closeDrillDown() { 
     $('#drillDownScreen').addClass('hidden-screen'); 
     $('#mainScreen').removeClass('hidden-screen'); 
 }
 
-// CAMBIO DE VISTAS Y ENCABEZADOS
+
+// ==========================================
+// INTERACCIONES Y UTILIDADES
+// ==========================================
 function switchView(v) {
     currentView = v; 
     $('.view-btn').removeClass('active'); 
@@ -326,11 +459,23 @@ function switchView(v) {
     applyFilters(); 
 }
 
-// UTILIDADES MATEMÁTICAS
-function excelToDate(s) { return s > 0 ? new Date(Math.round((s - 25569) * 86400 * 1000)) : null; }
-function formatearFecha(d) { return d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}` : ""; }
-function calcularDias(d) { return d ? Math.ceil(Math.abs(TODAY - d) / 86400000) : -1; }
-function label(t, c) { return `<span class="status-pill ${c}">${t}</span>`; }
+function excelToDate(s) { 
+    if (!s || String(s).trim() === "" || isNaN(Number(s))) return null;
+    return new Date(Math.round((Number(s) - 25569) * 86400 * 1000)); 
+}
+
+function formatearFecha(d) { 
+    return d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}` : ""; 
+}
+
+function calcularDias(d) { 
+    return d ? Math.ceil(Math.abs(TODAY - d) / 86400000) : -1; 
+}
+
+function label(t, c) { 
+    return `<span class="status-pill ${c}">${t}</span>`; 
+}
+
 function getAgeCategory(a) { 
     if (a < 0) return "Sin Dato"; 
     if (a <= 30) return "Reciente (0-30 días)"; 
