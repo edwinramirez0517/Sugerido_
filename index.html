@@ -26,9 +26,7 @@
         .bg-amarillo { background-color: #fff3cd; color: #664d03; border: 1px solid #FFECB5; }
         .bg-rojo { background-color: #f8d7da; color: #842029; border: 1px solid #F5C2C7; }
         .bg-gris { background-color: #e9ecef; color: #495057; border: 1px solid #ced4da; }
-        .bg-morado { background-color: #e0cffc; color: #5f3dc4; border: 1px solid #b197fc; } /* Nuevo color para Sobre-stock */
         .bg-morado { background-color: #e0cffc; color: #5f3dc4; border: 1px solid #b197fc; } 
-        .bg-naranja { background-color: #ffe8cc; color: #d9480f; border: 1px solid #ffa94d; }
 
         table.dataTable thead th { background-color: var(--brand-blue) !important; color: white !important; text-align: center !important; vertical-align: middle; }
         .clickable-row { cursor: pointer; transition: background-color 0.2s; }
@@ -60,19 +58,16 @@
 </div>
 
 <div class="container-fluid px-4" id="mainScreen">
-    <!-- FILTROS DINÁMICOS -->
+    
+    <!-- NUEVA SECCIÓN DE FILTROS EN CASCADA (6 COLUMNAS) -->
     <div class="card-custom border-top border-danger border-3 py-3 mb-3 shadow-sm">
-        <div class="row g-3">
+        <div class="row g-2 align-items-end">
             <div class="col-md-2"><label class="fw-bold mb-1 small">📁 División</label><select id="f_div" class="form-select" multiple></select></div>
-            <div class="col-md-3"><label class="fw-bold mb-1 small">🛍️ Categoría</label><select id="f_cat" class="form-select" multiple></select></div>
-            <div class="col-md-3"><label class="fw-bold mb-1 small">📦 Grupo</label><select id="f_grp" class="form-select" multiple></select></div>
-            <div class="col-md-2"><label class="fw-bold mb-1 small">⏳ Antigüedad</label><select id="f_age" class="form-select" multiple>
-                <option value="Reciente (0-30 días)">Reciente (0-30 días)</option>
-                <option value="Stock Normal (31-90 días)">Stock Normal (31-90 días)</option>
-                <option value="Lento Mov. (91-180 días)">Lento Mov. (91-180 días)</option>
-                <option value="Estancado (>180 días)">Estancado (>180 días)</option>
-            </select></div>
-            <div class="col-md-2 d-flex align-items-end"><button id="resetFilters" class="btn btn-danger w-100 fw-bold shadow-sm"><i class="fa-solid fa-filter-circle-xmark me-2"></i>Limpiar Filtros</button></div>
+            <div class="col-md-2"><label class="fw-bold mb-1 small">🛍️ Categoría</label><select id="f_cat" class="form-select" multiple></select></div>
+            <div class="col-md-2"><label class="fw-bold mb-1 small">📦 Grupo</label><select id="f_grp" class="form-select" multiple></select></div>
+            <div class="col-md-2"><label class="fw-bold mb-1 small">⏳ Antigüedad</label><select id="f_age" class="form-select" multiple></select></div>
+            <div class="col-md-2"><label class="fw-bold mb-1 small text-primary" id="lbl_f_status">📊 Estado Gerencial</label><select id="f_status" class="form-select" multiple></select></div>
+            <div class="col-md-2"><button id="resetFilters" class="btn btn-danger w-100 fw-bold shadow-sm"><i class="fa-solid fa-filter-circle-xmark me-2"></i>Limpiar Filtros</button></div>
         </div>
     </div>
 
@@ -138,7 +133,6 @@
         </button>
     </div>
 
-    <!-- TARJETAS DE RESUMEN DEL GRUPO -->
     <div class="row g-3 mb-3">
         <div class="col-md-3"><div class="card-custom text-center border-start border-danger border-4 shadow-sm p-3">
             <div class="small fw-bold text-muted text-uppercase">Necesidad del Grupo</div>
@@ -158,7 +152,6 @@
         </div></div>
     </div>
 
-    <!-- TABLA DE SKUs -->
     <div class="card-custom p-0 overflow-hidden shadow-sm">
         <div class="p-3 bg-light border-bottom">
             <h6 class="m-0 fw-bold text-primary"><i class="fa-solid fa-barcode me-2"></i>Desglose Granular por Códigos (SKUs)</h6>
