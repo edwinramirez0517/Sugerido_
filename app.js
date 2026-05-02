@@ -7,39 +7,79 @@ let dataBase = [];
 let mainTable, skuTable;
 let necessityChart, statusChart;
 let currentView = 'gerencial'; 
+// FECHA DEL TABLERO: 28 de Abril de 2026
 const TODAY = new Date('2026-04-28'); 
-const CURRENT_MONTH = TODAY.getMonth() + 1; // 1 a 12
+const CURRENT_MONTH = TODAY.getMonth() + 1; // Abril = 4
 
-// REGLAS LOGÍSTICAS DE COMPORTAMIENTO
+// REGLAS LOGÍSTICAS (LIMITES FANTASMAS Y URGENCIA)
 const reglasLogisticas = {
     "PASEO": { limiteFantasma: 0, minUrgencia: 1 },
     "HOGAR": { limiteFantasma: 0, minUrgencia: 1 },
     "ROPA": { limiteFantasma: 12, minUrgencia: 24 },
     "CALZADO": { limiteFantasma: 12, minUrgencia: 24 },
+    "CALZADO PLASTICO": { limiteFantasma: 12, minUrgencia: 24 },
     "INTERIOR DETALLE": { limiteFantasma: 24, minUrgencia: 48 },
     "DEFAULT": { limiteFantasma: 50, minUrgencia: 100 } 
 };
 
 // ==========================================
-// INICIALIZACIÓN (DOCUMENT READY)
+// EVALUAR TEMPORADAS (HONDURAS)
+// ==========================================
+// Retorna: "ALTA", "FUERA", o "NORMAL"
+function checkSeason(div, cat, grp) {
+    let text = `${div} ${cat} ${grp}`.toUpperCase();
+
+    // 1. ESCOLAR (Se mueve en Diciembre, fuerte en Ene-Feb)
+    if (text.includes("ESCOLAR") || text.includes("MOCHILA") || text.includes("CUADERNO")) {
+        if ([12, 1, 2].includes(CURRENT_MONTH)) return "ALTA";
+        return "FUERA";
+    }
+    // 2. SAN VALENTÍN (Febrero, se mueve desde Enero)
+    if (text.includes("VALENTIN") || text.includes("AMOR")) {
+        if ([1, 2].includes(CURRENT_MONTH)) return "ALTA";
+        return "FUERA";
+    }
+    // 3. VERANO / SEMANA SANTA (Se mueve Mar-Abr)
+    if (text.includes("VERANO") || text.includes("PLAYA") || text.includes("PISCINA") || text.includes("TRAJE DE BAÑO")) {
+        if ([3, 4].includes(CURRENT_MONTH)) return "ALTA";
+        return "FUERA";
+    }
+    // 4. DÍA DE LA MADRE (Mayo, se mueve desde mediados de Abril)
+    if (text.includes("MAMA") || text.includes("MADRE")) {
+        if ([4, 5].includes(CURRENT_MONTH)) return "ALTA";
+        // No lo mandamos a "Fuera" porque ropa de mamá se vende todo el año, solo le damos el boost en Mayo.
+    }
+    // 5. CATORCEAVO / PRE-TEMPORADA (Junio - Julio)
+    // Aplica a TODO el inventario de alto valor (Hogar, Electrodomésticos, Paseo)
+    if (["HOGAR", "TECNOLOGIA", "PASEO"].includes(div.toUpperCase())) {
+        if ([6, 7].includes(CURRENT_MONTH)) return "ALTA";
+    }
+    // 6. DÍA DEL NIÑO / INDEPENDENCIA (Septiembre, se mueve en Agosto)
+    if (text.includes("NIÑO") || text.includes("JUGUET")) {
+        if ([8, 9].includes(CURRENT_MONTH)) return "ALTA";
+    }
+    // 7. NAVIDAD (Se mueve fuerte desde Sep/Oct hasta Dic)
+    if (text.includes("NAVIDAD") || text.includes("PASCUA") || text.includes("LUCES")) {
+        if ([9, 10, 11, 12].includes(CURRENT_MONTH)) return "ALTA";
+        return "FUERA";
+    }
+
+    return "NORMAL"; // Si no es producto de temporada, es de venta regular
+}
+
+// ==========================================
+// INICIALIZACIÓN
 // ==========================================
 $(document).ready(function() {
-    
-    // Inicializar Tabla Principal (Matriz) con RENDER para números
     mainTable = $('#mainTable').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 10,
         lengthMenu: [10, 25, 50, 100],
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" },
-            { 
-                targets: [2, 3, 4, 5, 6], // Columnas numéricas
-                render: $.fn.dataTable.render.number(',', '.', 0, '') // Ordena bien y muestra con comas
-            }
+            { targets: [2, 3, 4, 5, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') }
         ],
-        createdRow: function(row) { 
-            $(row).addClass('clickable-row'); 
-        }
+        createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
 
     skuTable = $('#skuTable').DataTable({ 
@@ -47,10 +87,7 @@ $(document).ready(function() {
         pageLength: 10,
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" },
-            { 
-                targets: [5, 7, 8], // Columnas numéricas
-                render: $.fn.dataTable.render.number(',', '.', 0, '') 
-            }
+            { targets: [4, 5, 7], render: $.fn.dataTable.render.number(',', '.', 0, '') }
         ]
     });
 
@@ -66,7 +103,6 @@ $(document).ready(function() {
     $('#mainTable tbody').on('click', 'tr', function () {
         let rowData = mainTable.row(this).data();
         if (!rowData) return;
-        
         let groupName = rowData[0].split('<br>')[0].replace(/<b>|<\/b>/g, "").trim();
         let groupData = dataBase.find(d => d.grp === groupName);
         if (groupData) openDrillDown(groupData);
@@ -80,7 +116,7 @@ $(document).ready(function() {
 
 
 // ==========================================
-// LECTURA DE CSV Y SANITIZACIÓN DE DATOS
+// LECTURA DE CSV 
 // ==========================================
 function loadCSVData() {
     Promise.all([
@@ -141,13 +177,10 @@ function loadCSVData() {
         initFilters();
         renderDashboard(dataBase);
     }).catch(error => {
-        console.error("Error al cargar los archivos CSV:", error);
+        console.error("Error CSV:", error);
     });
 }
 
-// ==========================================
-// FILTROS EN CASCADA
-// ==========================================
 function initFilters() {
     let divs = [...new Set(dataBase.map(i => i.div))].sort();
     $('#f_div').empty().append(divs.map(i => new Option(i, i)));
@@ -177,28 +210,12 @@ function applyFilters() {
 }
 
 // ==========================================
-// EVALUAR TEMPORADA
-// ==========================================
-function isOutOfSeason(div, cat, grp) {
-    let upperGrp = grp.toUpperCase();
-    let upperCat = cat.toUpperCase();
-    
-    // Si es Navidad y no estamos entre Octubre(10) y Diciembre(12)
-    let isChristmas = upperGrp.includes("NAVIDAD") || upperCat.includes("NAVIDAD");
-    if (isChristmas && (CURRENT_MONTH < 10)) return true;
-    
-    return false;
-}
-
-
-// ==========================================
 // RENDERIZADO DUAL DE LA MATRIZ
 // ==========================================
 function renderDashboard(data) {
     mainTable.clear();
-    
     let tS = 0, tN = 0;
-    let k = { m1: 0, m2: 0, m3: 0, m4: 0 }; 
+    let k = { m1: 0, m2: 0, m3: 0, m4: 0, m5: 0 }; 
     let divSum = {}; 
 
     data.forEach(row => {
@@ -212,67 +229,52 @@ function renderDashboard(data) {
         divSum[row.div] += n;
 
         let col7, col8;
-        let outOfSeason = isOutOfSeason(row.div, row.cat, row.grp);
+        let seasonStatus = checkSeason(row.div, row.cat, row.grp);
 
         if (currentView === 'gerencial') {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
             
-            if (outOfSeason && s > 0) {
-                // Producto fuera de temporada con inventario = ESTANCADO/SOBRE-STOCK
+            if (seasonStatus === "FUERA" && s > 0) {
                 col7 = `<b class="text-danger">${cob > 100 ? '> 100' : cob.toFixed(0)}%</b>`;
                 col8 = label('Inmovilizado','bg-morado'); k.m3++;
             } else {
                 col7 = n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>');
                 
-                // Agregamos stock de seguridad lógico: Una cobertura del 100% no es sana, es ajustada. Sano es > 120%
-                if (n === 0 && s > 0) { 
-                    col8 = label('Sano','bg-verde'); k.m3++; 
-                } else if (cob < 50) { 
-                    col8 = label('Comprar Urgente','bg-rojo'); k.m1++; 
-                } else if (cob <= 110) { 
-                    col8 = label('En Tiempo','bg-amarillo'); k.m2++; 
-                } else { 
-                    col8 = label('Sano','bg-verde'); k.m3++; 
-                }
+                if (n === 0 && s > 0) { col8 = label('Sano','bg-verde'); k.m3++; } 
+                else if (cob < 50) { col8 = label('Comprar Urgente','bg-rojo'); k.m1++; } 
+                else if (cob <= 110) { col8 = label('En Tiempo','bg-amarillo'); k.m2++; } 
+                else { col8 = label('Sano','bg-verde'); k.m3++; }
             }
             
         } else {
             let surtir = Math.min(s, n);
             let falta = n - s;
             
-            col7 = `<b class="fs-6 text-dark">📦 ${surtir.toLocaleString()}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta.toLocaleString()}</small>`:''}`;
+            // Columna "A Surtir": Muestra lo que el bodeguero sí puede llevar físicamente
+            col7 = `<b class="fs-6 text-dark">📦 ${surtir.toLocaleString('en-US')}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta.toLocaleString('en-US')}</small>`:''}`;
             
             let r = reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
             
-            // Si está fuera de temporada, no se manda a buscar aunque el sistema pida
-            if (outOfSeason) {
-                col8 = label('Fuera de Temporada','bg-gris'); k.m4++;
+            if (seasonStatus === "FUERA") {
+                col8 = label('Fuera de Temporada', 'bg-gris'); k.m5++; // Ignorar
             } else if (n === 0) { 
                 col8 = label('Completado','bg-verde'); k.m4++; 
             } else if (s === 0) { 
-                col8 = label('Quiebre','bg-rojo'); k.m1++; 
+                col8 = label('Quiebre (Saldo 0)','bg-dark text-white'); k.m1++; // Negro = no hay nada que hacer, depende de compras
             } else if (s <= r.limiteFantasma && row.max_age > 90) { 
                 col8 = label('Residual','bg-gris'); k.m4++; 
             } else if (s < n) { 
-                col8 = label('Faltante','bg-rojo'); k.m1++; 
-            } else if (n >= r.minUrgencia) { 
-                col8 = label('Prioridad Alta','bg-rojo'); k.m2++; 
+                col8 = label('Surtido Parcial','bg-naranja'); k.m2++; // Naranja = Haz lo que puedas
+            } else if (n >= r.minUrgencia || seasonStatus === "ALTA") { 
+                col8 = label('🔥 Prioridad Alta','bg-rojo'); k.m2++; // Rojo = Surtir Completo ya
             } else { 
-                col8 = label('Surtido Normal','bg-amarillo'); k.m2++; 
+                col8 = label('Surtido Completo','bg-amarillo'); k.m2++; // Amarillo = Surtir, no hay urgencia
             }
         }
 
-        // Fila construida con los valores numéricos puros para que DataTables ordene bien
         mainTable.row.add([
             `<b>${row.grp}</b><br><small class="text-muted">${row.grp_id}</small>`, 
-            row.div, 
-            s, 
-            row.n_aec, 
-            row.n_may, 
-            row.n_ds, 
-            n, 
-            col7, 
-            col8
+            row.div, s, row.n_aec, row.n_may, row.n_ds, n, col7, col8
         ]);
     });
     
@@ -280,9 +282,6 @@ function renderDashboard(data) {
     updateUI(tS, tN, k, divSum);
 }
 
-// ==========================================
-// ACTUALIZACIÓN DE GRÁFICOS Y KPIS 
-// ==========================================
 function updateUI(s, n, k, divSum) {
     $('#kpiSaldo').text(Math.round(s).toLocaleString('en-US'));
     $('#kpiNec').text(Math.round(n).toLocaleString('en-US'));
@@ -290,11 +289,11 @@ function updateUI(s, n, k, divSum) {
     if (currentView === 'gerencial') {
         $('#lblCritico').text('Comprar Urgente'); $('#kpiCriticos').text(k.m1);
         $('#lblAjustado').text('En Tiempo'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
-        $('#lblOptimo').text('Sano / Inmovilizado'); $('#kpiOptimos').text(k.m3);
+        $('#lblOptimo').text('Sano / Inmov.'); $('#kpiOptimos').text(k.m3);
     } else {
-        $('#lblCritico').text('Quiebre / Faltante'); $('#kpiCriticos').text(k.m1);
+        $('#lblCritico').text('Quiebre (0)'); $('#kpiCriticos').text(k.m1);
         $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
-        $('#lblOptimo').text('Residual / Completado'); $('#kpiOptimos').text(k.m4);
+        $('#lblOptimo').text('Completado / Residual'); $('#kpiOptimos').text(k.m4 + k.m5);
     }
 
     let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
@@ -310,20 +309,30 @@ function updateUI(s, n, k, divSum) {
         }
     });
 
-    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Residual'];
-    let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#f8d7da', '#ffc107', '#e9ecef'];
+    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre', 'Surtir', 'Residual'];
+    let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#212529', '#ffc107', '#e9ecef'];
 
     if(statusChart) statusChart.destroy();
     statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), {
         type: 'doughnut',
-        data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4], backgroundColor: colorsPie, borderWidth: 2 }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }, datalabels: { formatter: (value, ctx) => { let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); let percentage = (value * 100 / sum).toFixed(1) + "%"; return value > 0 ? percentage : ''; }, color: '#444', font: { weight: 'bold' } } } }
+        data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4+k.m5], backgroundColor: colorsPie, borderWidth: 2 }] },
+        options: { 
+            responsive: true, maintainAspectRatio: false, cutout: '65%',
+            plugins: { 
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                datalabels: {
+                    formatter: (value, ctx) => {
+                        let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                        let percentage = (value * 100 / sum).toFixed(1) + "%";
+                        return value > 0 ? percentage : '';
+                    },
+                    color: '#444', font: { weight: 'bold' }
+                }
+            } 
+        }
     });
 }
 
-// ==========================================
-// MANEJO DE LA PANTALLA DRILL-DOWN (SKUs)
-// ==========================================
 function openDrillDown(g) {
     $('#mainScreen').addClass('hidden-screen');
     $('#drillDownScreen').removeClass('hidden-screen');
@@ -358,9 +367,7 @@ function openDrillDown(g) {
             s.estilo || '', 
             `<small>${s.desc}</small>`, 
             s.marca || '', 
-            s.f_ec || '', 
             s.s_aec, 
-            s.f_ds || '', 
             s.s_ds, 
             t, 
             t > 0 ? label('Sí','bg-verde') : label('No','bg-rojo')
@@ -383,7 +390,7 @@ function switchView(v) {
         $($('#mainTable thead th')[7]).text('% Cobertura');
         $($('#mainTable thead th')[8]).text('Estado Gerencial');
     } else {
-        $($('#mainTable thead th')[7]).html('A Surtir <br><small>(Faltante)</small>');
+        $($('#mainTable thead th')[7]).html('A Surtir');
         $($('#mainTable thead th')[8]).text('Prioridad Picking');
     }
     applyFilters(); 
