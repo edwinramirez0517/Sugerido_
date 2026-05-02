@@ -25,46 +25,36 @@ const reglasLogisticas = {
 // ==========================================
 // EVALUAR TEMPORADAS (HONDURAS)
 // ==========================================
-// Retorna: "ALTA", "FUERA", o "NORMAL"
 function checkSeason(div, cat, grp) {
     let text = `${div} ${cat} ${grp}`.toUpperCase();
 
-    // 1. ESCOLAR (Se mueve en Diciembre, fuerte en Ene-Feb)
     if (text.includes("ESCOLAR") || text.includes("MOCHILA") || text.includes("CUADERNO")) {
         if ([12, 1, 2].includes(CURRENT_MONTH)) return "ALTA";
         return "FUERA";
     }
-    // 2. SAN VALENTÍN (Febrero, se mueve desde Enero)
     if (text.includes("VALENTIN") || text.includes("AMOR")) {
         if ([1, 2].includes(CURRENT_MONTH)) return "ALTA";
         return "FUERA";
     }
-    // 3. VERANO / SEMANA SANTA (Se mueve Mar-Abr)
     if (text.includes("VERANO") || text.includes("PLAYA") || text.includes("PISCINA") || text.includes("TRAJE DE BAÑO")) {
         if ([3, 4].includes(CURRENT_MONTH)) return "ALTA";
         return "FUERA";
     }
-    // 4. DÍA DE LA MADRE (Mayo, se mueve desde mediados de Abril)
     if (text.includes("MAMA") || text.includes("MADRE")) {
         if ([4, 5].includes(CURRENT_MONTH)) return "ALTA";
-        // No lo mandamos a "Fuera" porque ropa de mamá se vende todo el año, solo le damos el boost en Mayo.
     }
-    // 5. CATORCEAVO / PRE-TEMPORADA (Junio - Julio)
-    // Aplica a TODO el inventario de alto valor (Hogar, Electrodomésticos, Paseo)
     if (["HOGAR", "TECNOLOGIA", "PASEO"].includes(div.toUpperCase())) {
         if ([6, 7].includes(CURRENT_MONTH)) return "ALTA";
     }
-    // 6. DÍA DEL NIÑO / INDEPENDENCIA (Septiembre, se mueve en Agosto)
     if (text.includes("NIÑO") || text.includes("JUGUET")) {
         if ([8, 9].includes(CURRENT_MONTH)) return "ALTA";
     }
-    // 7. NAVIDAD (Se mueve fuerte desde Sep/Oct hasta Dic)
     if (text.includes("NAVIDAD") || text.includes("PASCUA") || text.includes("LUCES")) {
         if ([9, 10, 11, 12].includes(CURRENT_MONTH)) return "ALTA";
         return "FUERA";
     }
 
-    return "NORMAL"; // Si no es producto de temporada, es de venta regular
+    return "NORMAL"; 
 }
 
 // ==========================================
@@ -77,7 +67,17 @@ $(document).ready(function() {
         lengthMenu: [10, 25, 50, 100],
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" },
-            { targets: [2, 3, 4, 5, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') }
+            { targets: [2, 3, 4, 5, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') },
+            // ARREGLO DE ORDENAMIENTO PARA COLUMNA 7 (METRICA) Y 8 (ESTADO)
+            { 
+                targets: [7, 8], 
+                render: function (data, type, row) {
+                    if (type === 'sort' || type === 'type') {
+                        return data.sortValue; // El motor usa este número oculto para ordenar
+                    }
+                    return data.display; // El usuario ve el HTML bonito
+                }
+            }
         ],
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
@@ -228,47 +228,50 @@ function renderDashboard(data) {
         if(!divSum[row.div]) divSum[row.div] = 0;
         divSum[row.div] += n;
 
-        let col7, col8;
+        // Objetos para enviar visualización y número oculto a la tabla
+        let col7 = { display: '', sortValue: 0 }; 
+        let col8 = { display: '', sortValue: 0 };
         let seasonStatus = checkSeason(row.div, row.cat, row.grp);
 
         if (currentView === 'gerencial') {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
+            col7.sortValue = cob;
             
             if (seasonStatus === "FUERA" && s > 0) {
-                col7 = `<b class="text-danger">${cob > 100 ? '> 100' : cob.toFixed(0)}%</b>`;
-                col8 = label('Inmovilizado','bg-morado'); k.m3++;
+                col7.display = `<b class="text-danger">${cob > 100 ? '> 100' : cob.toFixed(0)}%</b>`;
+                col8.display = label('Inmovilizado','bg-morado'); col8.sortValue = 4; k.m3++;
             } else {
-                col7 = n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>');
+                col7.display = n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>');
                 
-                if (n === 0 && s > 0) { col8 = label('Sano','bg-verde'); k.m3++; } 
-                else if (cob < 50) { col8 = label('Comprar Urgente','bg-rojo'); k.m1++; } 
-                else if (cob <= 110) { col8 = label('En Tiempo','bg-amarillo'); k.m2++; } 
-                else { col8 = label('Sano','bg-verde'); k.m3++; }
+                if (n === 0 && s > 0) { col8.display = label('Sano','bg-verde'); col8.sortValue = 3; k.m3++; } 
+                else if (cob < 50) { col8.display = label('Comprar Urgente','bg-rojo'); col8.sortValue = 1; k.m1++; } 
+                else if (cob <= 110) { col8.display = label('En Tiempo','bg-amarillo'); col8.sortValue = 2; k.m2++; } 
+                else { col8.display = label('Sano','bg-verde'); col8.sortValue = 3; k.m3++; }
             }
             
         } else {
             let surtir = Math.min(s, n);
             let falta = n - s;
             
-            // Columna "A Surtir": Muestra lo que el bodeguero sí puede llevar físicamente
-            col7 = `<b class="fs-6 text-dark">📦 ${surtir.toLocaleString('en-US')}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta.toLocaleString('en-US')}</small>`:''}`;
+            col7.sortValue = surtir;
+            col7.display = `<b class="fs-6 text-dark">📦 ${surtir.toLocaleString('en-US')}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta.toLocaleString('en-US')}</small>`:''}`;
             
             let r = reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
             
             if (seasonStatus === "FUERA") {
-                col8 = label('Fuera de Temporada', 'bg-gris'); k.m5++; // Ignorar
+                col8.display = label('Fuera de Temporada', 'bg-gris'); col8.sortValue = 7; k.m5++;
             } else if (n === 0) { 
-                col8 = label('Completado','bg-verde'); k.m4++; 
+                col8.display = label('Completado','bg-verde'); col8.sortValue = 5; k.m4++; 
             } else if (s === 0) { 
-                col8 = label('Quiebre (Saldo 0)','bg-dark text-white'); k.m1++; // Negro = no hay nada que hacer, depende de compras
+                col8.display = label('Quiebre (Saldo 0)','bg-dark text-white'); col8.sortValue = 1; k.m1++; 
             } else if (s <= r.limiteFantasma && row.max_age > 90) { 
-                col8 = label('Residual','bg-gris'); k.m4++; 
+                col8.display = label('Residual','bg-gris'); col8.sortValue = 6; k.m4++; 
             } else if (s < n) { 
-                col8 = label('Surtido Parcial','bg-naranja'); k.m2++; // Naranja = Haz lo que puedas
+                col8.display = label('Faltante','bg-rojo'); col8.sortValue = 2; k.m1++; 
             } else if (n >= r.minUrgencia || seasonStatus === "ALTA") { 
-                col8 = label('🔥 Prioridad Alta','bg-rojo'); k.m2++; // Rojo = Surtir Completo ya
+                col8.display = label('🔥 Prioridad Alta','bg-rojo'); col8.sortValue = 3; k.m2++; 
             } else { 
-                col8 = label('Surtido Completo','bg-amarillo'); k.m2++; // Amarillo = Surtir, no hay urgencia
+                col8.display = label('Surtido Normal','bg-amarillo'); col8.sortValue = 4; k.m2++; 
             }
         }
 
@@ -291,9 +294,9 @@ function updateUI(s, n, k, divSum) {
         $('#lblAjustado').text('En Tiempo'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
         $('#lblOptimo').text('Sano / Inmov.'); $('#kpiOptimos').text(k.m3);
     } else {
-        $('#lblCritico').text('Quiebre (0)'); $('#kpiCriticos').text(k.m1);
+        $('#lblCritico').text('Quiebre / Faltante'); $('#kpiCriticos').text(k.m1);
         $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
-        $('#lblOptimo').text('Completado / Residual'); $('#kpiOptimos').text(k.m4 + k.m5);
+        $('#lblOptimo').text('Residual / Completado'); $('#kpiOptimos').text(k.m4 + k.m5);
     }
 
     let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
@@ -309,7 +312,7 @@ function updateUI(s, n, k, divSum) {
         }
     });
 
-    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre', 'Surtir', 'Residual'];
+    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Residual'];
     let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#212529', '#ffc107', '#e9ecef'];
 
     if(statusChart) statusChart.destroy();
