@@ -7,11 +7,9 @@ let dataBase = [];
 let mainTable, skuTable;
 let necessityChart, statusChart;
 let currentView = 'gerencial'; 
-// FECHA DEL TABLERO: 28 de Abril de 2026
 const TODAY = new Date('2026-04-28'); 
-const CURRENT_MONTH = TODAY.getMonth() + 1; // Abril = 4
+const CURRENT_MONTH = TODAY.getMonth() + 1; 
 
-// REGLAS LOGÍSTICAS (LIMITES FANTASMAS Y URGENCIA)
 const reglasLogisticas = {
     "PASEO": { limiteFantasma: 0, minUrgencia: 1 },
     "HOGAR": { limiteFantasma: 0, minUrgencia: 1 },
@@ -36,7 +34,7 @@ function checkSeason(div, cat, grp) {
         if ([1, 2].includes(CURRENT_MONTH)) return "ALTA";
         return "FUERA";
     }
-    if (text.includes("VERANO") || text.includes("PLAYA") || text.includes("PISCINA") || text.includes("TRAJE DE BAÑO")) {
+    if (text.includes("VERANO") || text.includes("PLAYA") || text.includes("PISCINA") || text.includes("BAÑO")) {
         if ([3, 4].includes(CURRENT_MONTH)) return "ALTA";
         return "FUERA";
     }
@@ -53,12 +51,11 @@ function checkSeason(div, cat, grp) {
         if ([9, 10, 11, 12].includes(CURRENT_MONTH)) return "ALTA";
         return "FUERA";
     }
-
     return "NORMAL"; 
 }
 
 // ==========================================
-// INICIALIZACIÓN
+// INICIALIZACIÓN (DOCUMENT READY)
 // ==========================================
 $(document).ready(function() {
     mainTable = $('#mainTable').DataTable({
@@ -68,16 +65,7 @@ $(document).ready(function() {
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" },
             { targets: [2, 3, 4, 5, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') },
-            // ARREGLO DE ORDENAMIENTO PARA COLUMNA 7 (METRICA) Y 8 (ESTADO)
-            { 
-                targets: [7, 8], 
-                render: function (data, type, row) {
-                    if (type === 'sort' || type === 'type') {
-                        return data.sortValue; // El motor usa este número oculto para ordenar
-                    }
-                    return data.display; // El usuario ve el HTML bonito
-                }
-            }
+            { targets: [7, 8], render: function (data, type) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } }
         ],
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
@@ -91,14 +79,14 @@ $(document).ready(function() {
         ]
     });
 
-    $('#f_div, #f_cat, #f_grp, #f_age').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Seleccionar..." });
+    $('#f_div, #f_cat, #f_grp, #f_age, #f_status').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Todos" });
 
     loadCSVData();
 
-    $('#f_div, #f_cat, #f_grp, #f_age').on('change', function() {
-        if ($(this).attr('id') === 'f_div') updateSubFilters();
-        applyFilters();
-    });
+    // Eventos Select2 para FILTROS EN CASCADA
+    $('#f_div').on('select2:select select2:unselect', function() { updateSubFilters('div'); applyFilters(); });
+    $('#f_cat').on('select2:select select2:unselect', function() { updateSubFilters('cat'); applyFilters(); });
+    $('#f_grp, #f_age, #f_status').on('select2:select select2:unselect', function() { applyFilters(); });
 
     $('#mainTable tbody').on('click', 'tr', function () {
         let rowData = mainTable.row(this).data();
@@ -109,14 +97,15 @@ $(document).ready(function() {
     });
 
     $('#resetFilters').on('click', function() {
-        $('#f_div, #f_cat, #f_grp, #f_age').val(null).trigger('change');
-        renderDashboard(dataBase); 
+        $('#f_div, #f_cat, #f_grp, #f_age, #f_status').val(null).trigger('change.select2');
+        updateSubFilters('div'); // Resetea las cascadas
+        applyFilters(); 
     });
 });
 
 
 // ==========================================
-// LECTURA DE CSV 
+// LECTURA CSV Y CÁLCULO DE ESTADOS PREVIOS
 // ==========================================
 function loadCSVData() {
     Promise.all([
@@ -156,15 +145,11 @@ function loadCSVData() {
                 let age = Math.max(calcularDias(dEC), calcularDias(dDS));
                 
                 dataMap[grp].skus.push({ 
-                    cod: (row["Producto"] || "").trim(), 
-                    estilo: (row["Estilo ID"] || "").trim(), 
-                    marca: (row["Marca"] || "").trim(), 
-                    desc: (row["ProdNombre"] || "").trim(), 
+                    cod: (row["Producto"] || "").trim(), estilo: (row["Estilo ID"] || "").trim(), 
+                    marca: (row["Marca"] || "").trim(), desc: (row["ProdNombre"] || "").trim(), 
                     s_aec: Math.round(parseFloat(row["SaldoUND_EC"]) || 0), 
                     s_ds: Math.round(parseFloat(row["SaldoUND_DS"]) || 0),
-                    f_ec: formatearFecha(dEC), 
-                    f_ds: formatearFecha(dDS),
-                    age: age
+                    f_ec: formatearFecha(dEC), f_ds: formatearFecha(dDS), age: age
                 });
 
                 if(age > dataMap[grp].max_age) dataMap[grp].max_age = age;
@@ -172,39 +157,109 @@ function loadCSVData() {
         });
 
         dataBase = Object.values(dataMap);
-        dataBase.forEach(g => { g.age_cat = getAgeCategory(g.max_age); });
+        
+        // Calcular estados fijos de cada fila para poder filtrarlos en el menú
+        dataBase.forEach(row => { 
+            row.age_cat = getAgeCategory(row.max_age); 
+            
+            let s = row.s_aec + row.s_ds;
+            let n = row.n_aec + row.n_may + row.n_ds;
+            let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
+            let season = checkSeason(row.div, row.cat, row.grp);
+            let r = reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
+
+            // Lógica Gerencial
+            if (season === "FUERA" && s > 0) row.est_gerencial = 'Inmovilizado';
+            else if (n === 0 && s > 0) row.est_gerencial = 'Sano';
+            else if (cob < 50) row.est_gerencial = 'Comprar Urgente';
+            else if (cob <= 110) row.est_gerencial = 'En Tiempo';
+            else row.est_gerencial = 'Sano';
+
+            // Lógica Operativa
+            if (season === "FUERA") row.est_operativo = 'Fuera de Temporada';
+            else if (n === 0) row.est_operativo = 'Completado';
+            else if (s === 0) row.est_operativo = 'Quiebre';
+            else if (s <= r.limiteFantasma && row.max_age > 90) row.est_operativo = 'Residual';
+            else if (s < n) row.est_operativo = 'Faltante';
+            else if (n >= r.minUrgencia || season === "ALTA") row.est_operativo = 'Prioridad Alta';
+            else row.est_operativo = 'Surtido Normal';
+        });
 
         initFilters();
-        renderDashboard(dataBase);
-    }).catch(error => {
-        console.error("Error CSV:", error);
+        applyFilters(); // Manda a renderizar
+    }).catch(error => { console.error("Error CSV:", error); });
+}
+
+// ==========================================
+// FILTROS EN CASCADA
+// ==========================================
+function rebuildSelect(id, options, selectedArr) {
+    let $el = $(id);
+    $el.empty();
+    options.forEach(o => {
+        let isSelected = selectedArr ? selectedArr.includes(o) : false;
+        $el.append(new Option(o, o, isSelected, isSelected));
     });
+    $el.trigger('change.select2');
 }
 
 function initFilters() {
     let divs = [...new Set(dataBase.map(i => i.div))].sort();
-    $('#f_div').empty().append(divs.map(i => new Option(i, i)));
-    updateSubFilters();
+    let ages = [...new Set(dataBase.map(i => i.age_cat))].sort();
+    
+    rebuildSelect('#f_div', divs, []);
+    rebuildSelect('#f_age', ages, []);
+    updateStatusFilterOptions();
+    updateSubFilters('div');
 }
 
-function updateSubFilters() {
-    let selectedDivs = $('#f_div').val() || [];
-    let filteredData = selectedDivs.length ? dataBase.filter(d => selectedDivs.includes(d.div)) : dataBase;
+// Dependiendo de la División, actualizamos las Categorías y Grupos
+function updateSubFilters(triggeredBy) {
+    let selDiv = $('#f_div').val() || [];
+    let selCat = $('#f_cat').val() || [];
+    let d = dataBase;
     
-    let cats = [...new Set(filteredData.map(i => i.cat))].sort();
-    let grps = [...new Set(filteredData.map(i => i.grp))].sort();
-    
-    $('#f_cat').empty().append(cats.map(i => new Option(i, i)));
-    $('#f_grp').empty().append(grps.map(i => new Option(i, i)));
+    if (triggeredBy === 'div') {
+        if (selDiv.length) d = d.filter(r => selDiv.includes(r.div));
+        let cats = [...new Set(d.map(i => i.cat))].sort();
+        rebuildSelect('#f_cat', cats, $('#f_cat').val());
+        
+        // Re-evaluar los grupos basándose en las nuevas categorías
+        selCat = $('#f_cat').val() || [];
+        if (selCat.length) d = d.filter(r => selCat.includes(r.cat));
+        let grps = [...new Set(d.map(i => i.grp))].sort();
+        rebuildSelect('#f_grp', grps, $('#f_grp').val());
+        
+    } else if (triggeredBy === 'cat') {
+        if (selDiv.length) d = d.filter(r => selDiv.includes(r.div));
+        if (selCat.length) d = d.filter(r => selCat.includes(r.cat));
+        let grps = [...new Set(d.map(i => i.grp))].sort();
+        rebuildSelect('#f_grp', grps, $('#f_grp').val());
+    }
+}
+
+function updateStatusFilterOptions() {
+    let statuses = [...new Set(dataBase.map(i => currentView === 'gerencial' ? i.est_gerencial : i.est_operativo))].sort();
+    $('#lbl_f_status').html(currentView === 'gerencial' ? '📊 Estado Gerencial' : '🚀 Prioridad Picking');
+    $('#f_status').val(null).trigger('change.select2'); // Limpiamos selección al cambiar de vista
+    rebuildSelect('#f_status', statuses, []);
 }
 
 function applyFilters() {
-    let f = { d: $('#f_div').val() || [], c: $('#f_cat').val() || [], g: $('#f_grp').val() || [], a: $('#f_age').val() || [] };
+    let f = { 
+        d: $('#f_div').val() || [], 
+        c: $('#f_cat').val() || [], 
+        g: $('#f_grp').val() || [], 
+        a: $('#f_age').val() || [],
+        s: $('#f_status').val() || []
+    };
+    
     let filtered = dataBase.filter(r => 
         (!f.d.length || f.d.includes(r.div)) && 
         (!f.c.length || f.c.includes(r.cat)) &&
         (!f.g.length || f.g.includes(r.grp)) && 
-        (!f.a.length || f.a.includes(r.age_cat))
+        (!f.a.length || f.a.includes(r.age_cat)) &&
+        (!f.s.length || (currentView === 'gerencial' ? f.s.includes(r.est_gerencial) : f.s.includes(r.est_operativo)))
     );
     renderDashboard(filtered);
 }
@@ -215,40 +270,49 @@ function applyFilters() {
 function renderDashboard(data) {
     mainTable.clear();
     let tS = 0, tN = 0;
-    let k = { m1: 0, m2: 0, m3: 0, m4: 0, m5: 0 }; 
+    let k = { m1: 0, m2: 0, m3: 0, m4: 0 }; 
     let divSum = {}; 
+
+    // Mapeo Visual
+    const gerencialMap = {
+        'Sano': { css: 'bg-verde', sort: 3 },
+        'Comprar Urgente': { css: 'bg-rojo', sort: 1 },
+        'En Tiempo': { css: 'bg-amarillo', sort: 2 },
+        'Inmovilizado': { css: 'bg-morado', sort: 4 }
+    };
+
+    const operativoMap = {
+        'Completado': { css: 'bg-verde', sort: 5 },
+        'Quiebre': { css: 'bg-dark text-white', sort: 1, text: 'Quiebre (Saldo 0)' },
+        'Residual': { css: 'bg-gris', sort: 6 },
+        'Faltante': { css: 'bg-rojo', sort: 2 },
+        'Prioridad Alta': { css: 'bg-rojo', sort: 3, text: '🔥 Prioridad Alta' },
+        'Surtido Normal': { css: 'bg-amarillo', sort: 4 },
+        'Fuera de Temporada': { css: 'bg-gris', sort: 7 }
+    };
 
     data.forEach(row => {
         let s = row.s_aec + row.s_ds;
         let n = row.n_aec + row.n_may + row.n_ds;
         
-        tS += s; 
-        tN += n;
-        
-        if(!divSum[row.div]) divSum[row.div] = 0;
-        divSum[row.div] += n;
+        tS += s; tN += n;
+        if(!divSum[row.div]) divSum[row.div] = 0; divSum[row.div] += n;
 
-        // Objetos para enviar visualización y número oculto a la tabla
         let col7 = { display: '', sortValue: 0 }; 
         let col8 = { display: '', sortValue: 0 };
-        let seasonStatus = checkSeason(row.div, row.cat, row.grp);
 
         if (currentView === 'gerencial') {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
             col7.sortValue = cob;
+            col7.display = row.est_gerencial === 'Inmovilizado' ? `<b class="text-danger">${cob > 100 ? '> 100' : cob.toFixed(0)}%</b>` : (n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>'));
             
-            if (seasonStatus === "FUERA" && s > 0) {
-                col7.display = `<b class="text-danger">${cob > 100 ? '> 100' : cob.toFixed(0)}%</b>`;
-                col8.display = label('Inmovilizado','bg-morado'); col8.sortValue = 4; k.m3++;
-            } else {
-                col7.display = n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>');
-                
-                if (n === 0 && s > 0) { col8.display = label('Sano','bg-verde'); col8.sortValue = 3; k.m3++; } 
-                else if (cob < 50) { col8.display = label('Comprar Urgente','bg-rojo'); col8.sortValue = 1; k.m1++; } 
-                else if (cob <= 110) { col8.display = label('En Tiempo','bg-amarillo'); col8.sortValue = 2; k.m2++; } 
-                else { col8.display = label('Sano','bg-verde'); col8.sortValue = 3; k.m3++; }
-            }
-            
+            let m = gerencialMap[row.est_gerencial];
+            col8.display = label(row.est_gerencial, m.css); col8.sortValue = m.sort;
+
+            if (row.est_gerencial === 'Comprar Urgente') k.m1++;
+            else if (row.est_gerencial === 'En Tiempo') k.m2++;
+            else if (row.est_gerencial === 'Sano' || row.est_gerencial === 'Inmovilizado') k.m3++;
+
         } else {
             let surtir = Math.min(s, n);
             let falta = n - s;
@@ -256,23 +320,12 @@ function renderDashboard(data) {
             col7.sortValue = surtir;
             col7.display = `<b class="fs-6 text-dark">📦 ${surtir.toLocaleString('en-US')}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta.toLocaleString('en-US')}</small>`:''}`;
             
-            let r = reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
-            
-            if (seasonStatus === "FUERA") {
-                col8.display = label('Fuera de Temporada', 'bg-gris'); col8.sortValue = 7; k.m5++;
-            } else if (n === 0) { 
-                col8.display = label('Completado','bg-verde'); col8.sortValue = 5; k.m4++; 
-            } else if (s === 0) { 
-                col8.display = label('Quiebre (Saldo 0)','bg-dark text-white'); col8.sortValue = 1; k.m1++; 
-            } else if (s <= r.limiteFantasma && row.max_age > 90) { 
-                col8.display = label('Residual','bg-gris'); col8.sortValue = 6; k.m4++; 
-            } else if (s < n) { 
-                col8.display = label('Faltante','bg-rojo'); col8.sortValue = 2; k.m1++; 
-            } else if (n >= r.minUrgencia || seasonStatus === "ALTA") { 
-                col8.display = label('🔥 Prioridad Alta','bg-rojo'); col8.sortValue = 3; k.m2++; 
-            } else { 
-                col8.display = label('Surtido Normal','bg-amarillo'); col8.sortValue = 4; k.m2++; 
-            }
+            let m = operativoMap[row.est_operativo];
+            col8.display = label(m.text || row.est_operativo, m.css); col8.sortValue = m.sort;
+
+            if (row.est_operativo === 'Quiebre' || row.est_operativo === 'Faltante') k.m1++;
+            else if (row.est_operativo === 'Prioridad Alta' || row.est_operativo === 'Surtido Normal') k.m2++;
+            else k.m4++;
         }
 
         mainTable.row.add([
@@ -296,7 +349,7 @@ function updateUI(s, n, k, divSum) {
     } else {
         $('#lblCritico').text('Quiebre / Faltante'); $('#kpiCriticos').text(k.m1);
         $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold');
-        $('#lblOptimo').text('Residual / Completado'); $('#kpiOptimos').text(k.m4 + k.m5);
+        $('#lblOptimo').text('Residual / Completado'); $('#kpiOptimos').text(k.m4);
     }
 
     let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
@@ -312,47 +365,26 @@ function updateUI(s, n, k, divSum) {
         }
     });
 
-    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Residual'];
+    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Inactivos'];
     let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#212529', '#ffc107', '#e9ecef'];
 
     if(statusChart) statusChart.destroy();
     statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), {
         type: 'doughnut',
-        data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4+k.m5], backgroundColor: colorsPie, borderWidth: 2 }] },
-        options: { 
-            responsive: true, maintainAspectRatio: false, cutout: '65%',
-            plugins: { 
-                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-                datalabels: {
-                    formatter: (value, ctx) => {
-                        let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                        let percentage = (value * 100 / sum).toFixed(1) + "%";
-                        return value > 0 ? percentage : '';
-                    },
-                    color: '#444', font: { weight: 'bold' }
-                }
-            } 
-        }
+        data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4], backgroundColor: colorsPie, borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }, datalabels: { formatter: (value, ctx) => { let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); let percentage = (value * 100 / sum).toFixed(1) + "%"; return value > 0 ? percentage : ''; }, color: '#444', font: { weight: 'bold' } } } }
     });
 }
 
 function openDrillDown(g) {
-    $('#mainScreen').addClass('hidden-screen');
-    $('#drillDownScreen').removeClass('hidden-screen');
+    $('#mainScreen').addClass('hidden-screen'); $('#drillDownScreen').removeClass('hidden-screen');
+    $('#detailDivCat').text(`${g.div} > ${g.cat}`); $('#detailGroupName').text(g.grp);
     
-    $('#detailDivCat').text(`${g.div} > ${g.cat}`);
-    $('#detailGroupName').text(g.grp);
-    
-    let nT = Math.round(g.n_aec + g.n_may + g.n_ds);
-    let sT = Math.round(g.s_aec + g.s_ds);
-    let fT = nT - sT > 0 ? nT - sT : 0;
-
-    $('#detNecTotal').text(nT.toLocaleString('en-US'));
-    $('#detSaldoTotal').text(sT.toLocaleString('en-US'));
+    let nT = Math.round(g.n_aec + g.n_may + g.n_ds); let sT = Math.round(g.s_aec + g.s_ds); let fT = nT - sT > 0 ? nT - sT : 0;
+    $('#detNecTotal').text(nT.toLocaleString('en-US')); $('#detSaldoTotal').text(sT.toLocaleString('en-US'));
     
     if (currentView === 'gerencial') {
-        $('#detFaltanteTitle').text('Cobertura');
-        let cob = nT > 0 ? (sT / nT * 100).toFixed(1) + '%' : '> 100%';
+        $('#detFaltanteTitle').text('Cobertura'); let cob = nT > 0 ? (sT / nT * 100).toFixed(1) + '%' : '> 100%';
         $('#detFaltante').text(cob).removeClass('text-danger').addClass('text-dark');
     } else {
         $('#detFaltanteTitle').text('Faltante Operativo');
@@ -365,49 +397,27 @@ function openDrillDown(g) {
     skuTable.clear();
     g.skus.forEach(s => {
         let t = s.s_aec + s.s_ds;
-        skuTable.row.add([
-            `<span class="fw-bold text-primary">${s.cod}</span>`, 
-            s.estilo || '', 
-            `<small>${s.desc}</small>`, 
-            s.marca || '', 
-            s.s_aec, 
-            s.s_ds, 
-            t, 
-            t > 0 ? label('Sí','bg-verde') : label('No','bg-rojo')
-        ]);
+        skuTable.row.add([ `<span class="fw-bold text-primary">${s.cod}</span>`, s.estilo || '', `<small>${s.desc}</small>`, s.marca || '', s.s_aec, s.s_ds, t, t > 0 ? label('Sí','bg-verde') : label('No','bg-rojo') ]);
     });
     skuTable.draw();
 }
 
-function closeDrillDown() { 
-    $('#drillDownScreen').addClass('hidden-screen'); 
-    $('#mainScreen').removeClass('hidden-screen'); 
-}
+function closeDrillDown() { $('#drillDownScreen').addClass('hidden-screen'); $('#mainScreen').removeClass('hidden-screen'); }
 
 function switchView(v) {
-    currentView = v; 
-    $('.view-btn').removeClass('active'); 
-    $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active');
+    currentView = v; $('.view-btn').removeClass('active'); $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active');
     
     if(v === 'gerencial') {
-        $($('#mainTable thead th')[7]).text('% Cobertura');
-        $($('#mainTable thead th')[8]).text('Estado Gerencial');
+        $($('#mainTable thead th')[7]).text('% Cobertura'); $('#thEstado').text('Estado Gerencial');
     } else {
-        $($('#mainTable thead th')[7]).html('A Surtir');
-        $($('#mainTable thead th')[8]).text('Prioridad Picking');
+        $($('#mainTable thead th')[7]).html('A Surtir'); $('#thEstado').text('Prioridad Picking');
     }
+    updateStatusFilterOptions();
     applyFilters(); 
 }
 
-// UTILIDADES MATEMÁTICAS
 function excelToDate(s) { return s > 0 ? new Date(Math.round((Number(s) - 25569) * 86400 * 1000)) : null; }
 function formatearFecha(d) { return d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}` : ""; }
 function calcularDias(d) { return d ? Math.ceil(Math.abs(TODAY - d) / 86400000) : -1; }
 function label(t, c) { return `<span class="status-pill ${c}">${t}</span>`; }
-function getAgeCategory(a) { 
-    if (a < 0) return "Sin Dato"; 
-    if (a <= 30) return "Reciente (0-30 días)"; 
-    if (a <= 90) return "Stock Normal (31-90 días)"; 
-    if (a <= 180) return "Lento Mov. (91-180 días)"; 
-    return "Estancado (>180 días)"; 
-}
+function getAgeCategory(a) { if (a < 0) return "Sin Dato"; if (a <= 30) return "Reciente (0-30 días)"; if (a <= 90) return "Stock Normal (31-90 días)"; if (a <= 180) return "Lento Mov. (91-180 días)"; return "Estancado (>180 días)"; }
