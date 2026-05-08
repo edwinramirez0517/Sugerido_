@@ -111,11 +111,24 @@ async function fetchAndUnzip(url) {
     if (!response.ok) throw new Error("No se pudo descargar el archivo: " + url);
     const blob = await response.blob();
     const zip = await JSZip.loadAsync(blob);
-    const fileNames = Object.keys(zip.files);
-    if (fileNames.length === 0) throw new Error("El archivo ZIP está vacío.");
-    // Extrae el primer archivo que encuentre adentro, sin importar el nombre
-    return await zip.file(fileNames[0]).async("string");
+    
+    let targetFile = null;
+    
+    // Buscamos específicamente un archivo que termine en .csv y que no sea una carpeta oculta
+    zip.forEach(function (relativePath, zipEntry) {
+        if (!zipEntry.dir && relativePath.toLowerCase().endsWith('.csv')) {
+            targetFile = zipEntry;
+        }
+    });
+    
+    if (!targetFile) {
+        throw new Error("No se encontró ningún archivo .csv válido dentro del ZIP.");
+    }
+    
+    // Extrae el texto del archivo encontrado de forma segura
+    return await targetFile.async("string");
 }
+
 
 function loadCSVData() {
     Promise.all([
