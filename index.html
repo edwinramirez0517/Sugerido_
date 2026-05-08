@@ -38,9 +38,18 @@
         .view-switch { border: 2px solid var(--brand-red); border-radius: 30px; overflow: hidden; display: flex; width: fit-content; background: white;}
         .view-btn { padding: 10px 25px; border: none; background: transparent; font-weight: bold; color: var(--brand-red); cursor: pointer; transition: 0.3s; }
         .view-btn.active { background: var(--brand-red); color: white; }
+        
+        #loadingOverlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.95); z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; }
     </style>
 </head>
 <body>
+
+<div id="loadingOverlay">
+    <div class="spinner-border text-danger mb-3" style="width: 4rem; height: 4rem;" role="status"></div>
+    <h3 class="text-primary fw-bold" id="loadingText">Cargando Sistema Logístico...</h3>
+    <p class="text-muted">Procesando inventarios por tienda y bodega...</p>
+    <div id="errorBox" class="alert alert-danger mt-3 d-none shadow" style="max-width: 600px; text-align: left;"></div>
+</div>
 
 <div class="brand-header">
     <div>
@@ -56,7 +65,7 @@
     </div>
 </div>
 
-<div class="container-fluid px-4" id="mainScreen">
+<div class="container-fluid px-4 hidden-screen" id="mainScreen">
     
     <div class="card-custom border-top border-danger border-3 py-3 mb-3 shadow-sm">
         <div class="row g-2 align-items-end">
@@ -64,7 +73,7 @@
             <div class="col-md-2"><label class="fw-bold mb-1 small">🛍️ Categoría</label><select id="f_cat" class="form-select" multiple></select></div>
             <div class="col-md-2"><label class="fw-bold mb-1 small">📦 Grupo</label><select id="f_grp" class="form-select" multiple></select></div>
             <div class="col-md-2"><label class="fw-bold mb-1 small">⏳ Antigüedad</label><select id="f_age" class="form-select" multiple></select></div>
-            <div class="col-md-2"><label class="fw-bold mb-1 small text-primary" id="lbl_f_status">📊 Estado Gerencial</label><select id="f_status" class="form-select" multiple></select></div>
+            <div class="col-md-2"><label class="fw-bold mb-1 small text-primary" id="lbl_f_status">📊 Estado</label><select id="f_status" class="form-select" multiple></select></div>
             <div class="col-md-2"><button id="resetFilters" class="btn btn-danger w-100 fw-bold shadow-sm"><i class="fa-solid fa-filter-circle-xmark me-2"></i>Limpiar Filtros</button></div>
         </div>
     </div>
@@ -79,9 +88,9 @@
             <h3 class="fw-bold text-danger mb-0" id="kpiNec" style="font-size: 2.2rem;">0</h3>
         </div></div>
         <div class="col-md-6"><div class="card-custom p-3 d-flex justify-content-around text-center shadow-sm">
-            <div><div class="small fw-bold text-muted text-uppercase" id="lblCritico">Urgente</div><h3 class="text-danger mb-0 fs-2" id="kpiCriticos">0</h3></div>
-            <div><div class="small fw-bold text-muted text-uppercase" id="lblAjustado">En Tiempo</div><h3 class="text-warning mb-0 fs-2" id="kpiAjustados">0</h3></div>
-            <div><div class="small fw-bold text-muted text-uppercase" id="lblOptimo">Sano</div><h3 class="text-success mb-0 fs-2" id="kpiOptimos">0</h3></div>
+            <div><div class="small fw-bold text-muted text-uppercase" id="lblCritico">Urgente</div><h3 class="text-danger mb-0 fs-2 fw-bold" id="kpiCriticos">0</h3></div>
+            <div><div class="small fw-bold text-muted text-uppercase" id="lblAjustado">En Tiempo</div><h3 class="text-warning mb-0 fs-2 fw-bold" id="kpiAjustados">0</h3></div>
+            <div><div class="small fw-bold text-muted text-uppercase" id="lblOptimo">Sano</div><h3 class="text-success mb-0 fs-2 fw-bold" id="kpiOptimos">0</h3></div>
         </div></div>
     </div>
 
@@ -93,7 +102,7 @@
     <div class="card-custom p-0 overflow-hidden shadow-sm">
         <div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center">
             <h6 class="m-0 fw-bold"><i class="fa-solid fa-table me-2"></i>Matriz de Abastecimiento y Antigüedad</h6>
-            <span class="badge bg-primary fs-6 shadow-sm"><i class="fa-solid fa-mouse-pointer me-1"></i>Clic en un Grupo para ver detalle de Tiendas y SKUs</span>
+            <span class="badge bg-primary fs-6 shadow-sm"><i class="fa-solid fa-mouse-pointer me-1"></i>Clic en un Grupo para ver detalle</span>
         </div>
         <div class="table-responsive p-3">
             <table id="mainTable" class="table table-hover w-100 align-middle text-center">
@@ -107,7 +116,7 @@
                         <th>Nec. DS</th>
                         <th>Total Nec.</th>
                         <th id="thMetrica">% Cobertura</th>
-                        <th id="thEstado">Estado Gerencial</th>
+                        <th id="thEstado">Estado</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -123,25 +132,18 @@
             <h2 class="fw-bold mb-0 text-white" id="detailGroupName"></h2>
         </div>
         <button class="btn btn-light fw-bold text-primary shadow-sm" onclick="closeDrillDown()">
-            <i class="fa-solid fa-arrow-left me-2"></i>Volver a la Matriz Principal
+            <i class="fa-solid fa-arrow-left me-2"></i>Volver a la Matriz
         </button>
     </div>
 
     <div class="row g-3">
         <div class="col-md-4">
             <div class="card-custom shadow-sm p-0 overflow-hidden h-100">
-                <div class="p-3 bg-danger text-white d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 fw-bold"><i class="fa-solid fa-store me-2"></i>1. Repartición por Tienda</h6>
-                </div>
+                <div class="p-3 bg-danger text-white"><h6 class="m-0 fw-bold"><i class="fa-solid fa-store me-2"></i>1. Reparto Tiendas</h6></div>
                 <div class="table-responsive p-2">
                     <table id="tiendasTable" class="table table-striped table-hover w-100 align-middle text-center">
                         <thead class="table-dark" style="font-size: 0.8rem;">
-                            <tr>
-                                <th>Tienda</th>
-                                <th>Stock Físico</th>
-                                <th>Requiere</th>
-                                <th>Estado</th>
-                            </tr>
+                            <tr><th>Tienda</th><th>Stock Local</th><th>Requiere</th><th>Estado</th></tr>
                         </thead>
                         <tbody></tbody>
                     </table>
@@ -151,22 +153,11 @@
 
         <div class="col-md-8">
             <div class="card-custom shadow-sm p-0 overflow-hidden h-100">
-                <div class="p-3 bg-dark text-white d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 fw-bold"><i class="fa-solid fa-barcode me-2"></i>2. SKUs en Bodega (Inventario Disponible para Extraer)</h6>
-                </div>
+                <div class="p-3 bg-dark text-white"><h6 class="m-0 fw-bold"><i class="fa-solid fa-barcode me-2"></i>2. SKUs en Bodega (Inventario Físico)</h6></div>
                 <div class="table-responsive p-2">
                     <table id="skuTable" class="table table-striped table-hover w-100 align-middle text-center">
                         <thead class="table-dark" style="font-size: 0.8rem;">
-                            <tr>
-                                <th>SKU</th>
-                                <th>Descripción</th>
-                                <th>Marca</th>
-                                <th>F. Entrada EC</th>
-                                <th>Saldo EC</th>
-                                <th>F. Entrada DS</th>
-                                <th>Saldo DS</th>
-                                <th>Total Disp.</th>
-                            </tr>
+                            <tr><th>SKU</th><th>Descripción</th><th>Marca</th><th>F. EC</th><th>Saldo EC</th><th>F. DS</th><th>Saldo DS</th><th>Total Disp.</th></tr>
                         </thead>
                         <tbody></tbody>
                     </table>
