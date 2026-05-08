@@ -72,13 +72,12 @@ $(document).ready(function() {
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
 
-    // CORRECCIÓN: Se actualizó para que la columna 2 acepte HTML y se pinte de rojo
     tiendasTable = $('#tiendasTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, pageLength: 10, lengthChange: false,
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
-            { targets: [1], render: $.fn.dataTable.render.number(',', '.', 0, '') },
-            { targets: [2], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } }
+            { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') }, // Sugerido y Saldo son números puros
+            { targets: [3], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } } // Necesidad es objeto con formato HTML
         ]
     });
 
@@ -172,7 +171,7 @@ function loadCSVData() {
             if(!grp || grp === "SIN GRP") return;
 
             if(!dataMap[grp]) {
-                dataMap[grp] = { div: (row[k_div] || "").trim(), cat: (row[k_cat] || "").trim(), grp_id: (row[k_grpId] || "").trim(), grp: grp, s_aec: 0, s_ds: 0, n_aec: 0, n_may: 0, n_ds: 0, total_nec: 0, max_age: -1, tiendas: [], skus: [] };
+                dataMap[grp] = { div: (row[k_div] || "").trim(), cat: (row[k_cat] || "").trim(), grp_id: (row[k_grpId] || "").trim(), grp: grp, s_aec: 0, s_ds: 0, n_aec: 0, n_may: 0, n_ds: 0, total_nec: 0, max_age: -1, tiendas: [], skusMap: new Map() };
             }
 
             let tiendaNombre = (row[k_tienda] || "").trim();
@@ -185,13 +184,23 @@ function loadCSVData() {
             let necMay = Math.round(parseFloat(row[k_nMayAEC]) || 0);
             let necDS = Math.round(parseFloat(row[k_nDS]) || 0);
 
-            dataMap[grp].n_aec += (sugAEC + necDet);
+            // Sumas Globales (Solo Necesidad Real)
+            dataMap[grp].n_aec += necDet;
             dataMap[grp].n_may += necMay;
-            dataMap[grp].n_ds += (sugDS + necDS);
+            dataMap[grp].n_ds += necDS;
 
-            let rowTotalNec = sugAEC + sugDS + necDet + necMay + necDS;
-            if (rowTotalNec > 0 && tiendaNombre !== "") {
-                dataMap[grp].tiendas.push({ nombre: tiendaNombre, tipo: tipoTienda, saldo_t: Math.round(parseFloat(row[k_saldoT]) || 0), necesidad: rowTotalNec });
+            let rowTotalNec = necDet + necMay + necDS;
+            let rowTotalSug = sugAEC + sugDS; // El sugerido se guarda aparte
+            
+            // Mostrar la tienda si tiene Necesidad o si tiene Sugerido
+            if ((rowTotalNec > 0 || rowTotalSug > 0) && tiendaNombre !== "") {
+                dataMap[grp].tiendas.push({ 
+                    nombre: tiendaNombre, 
+                    tipo: tipoTienda, 
+                    sugerido: rowTotalSug, 
+                    saldo_t: Math.round(parseFloat(row[k_saldoT]) || 0), 
+                    necesidad: rowTotalNec 
+                });
             }
         });
 
@@ -217,7 +226,7 @@ function loadCSVData() {
 
                 dataMap[grp].s_aec += sAEC; dataMap[grp].s_ds += sDS;
 
-                dataMap[grp].skus.push({ 
+                dataMap[grp].skusMap.set((row[k_sProd] || "").trim(), { 
                     cod: (row[k_sProd] || "").trim(), marca: (row[k_sMarca] || "").trim(), desc: (row[k_sDesc] || "").trim(), 
                     s_aec: sAEC, s_ds: sDS, total: sAEC + sDS, f_ec: formatearFecha(dEC), f_ds: formatearFecha(dDS), age: age
                 });
@@ -229,6 +238,9 @@ function loadCSVData() {
         dataBase = Object.values(dataMap);
         
         dataBase.forEach(row => { 
+            row.skus = Array.from(row.skusMap.values());
+            delete row.skusMap;
+
             row.age_cat = getAgeCategory(row.max_age); 
             let s = row.s_aec + row.s_ds;
             let n = row.n_aec + row.n_may + row.n_ds;
@@ -320,7 +332,6 @@ function renderDashboard(data) {
 
         let col7 = { display: '', sortValue: 0 }; let col8 = { display: '', sortValue: 0 };
         
-        // DS en Rojo para destacarlo
         let dsCol = { 
             display: row.n_ds > 0 ? `<span class="text-danger fw-bold">${row.n_ds.toLocaleString('en-US')}</span>` : '<span class="text-danger">0</span>', 
             sortValue: row.n_ds 
@@ -387,13 +398,20 @@ function openDrillDown(g) {
 
     tiendasTable.clear();
     g.tiendas.forEach(t => {
-        let badge = t.necesidad > t.saldo_t ? label('Urgente', 'bg-rojo') : label('Surtir', 'bg-amarillo');
+        let badge = '';
+        if (t.necesidad > 0 && t.necesidad > t.saldo_t) {
+            badge = label('Urgente', 'bg-rojo');
+        } else if (t.necesidad > 0) {
+            badge = label('Surtir', 'bg-amarillo');
+        } else {
+            badge = label('Ok', 'bg-verde');
+        }
+
         let nombreDisplay = t.nombre.toUpperCase().includes('DS') ? `<b class="text-danger">${t.nombre}</b>` : `<b>${t.nombre}</b>`;
         
-        // CORRECCIÓN: La columna de requerimiento ya admite formato de objeto sin arrojar error visual
         let col_req = { display: `<b class="text-danger fs-6">${t.necesidad.toLocaleString('en-US')}</b>`, sortValue: t.necesidad };
         
-        tiendasTable.row.add([ `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, t.saldo_t, col_req, badge ]);
+        tiendasTable.row.add([ `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, t.sugerido, t.saldo_t, col_req, badge ]);
     });
     tiendasTable.draw();
 
@@ -413,4 +431,3 @@ function closeDrillDown() { $('#drillDownScreen').addClass('hidden-screen'); $('
 // ==========================================
 // FIN DEL CÓDIGO
 // ==========================================
-p
