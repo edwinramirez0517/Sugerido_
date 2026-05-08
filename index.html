@@ -18,7 +18,6 @@
         .slogan { color: var(--brand-red); font-size: 0.85rem; font-weight: bold; text-transform: uppercase; }
         .card-custom { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: none; }
         
-        /* CORRECCIÓN DEL FILTRO DISTORSIONADO */
         .select2-container--bootstrap-5 .select2-selection--multiple { 
             min-height: 38px !important; 
             max-height: 38px !important; 
@@ -171,7 +170,26 @@
     <div class="row g-3">
         <div class="col-md-5">
             <div class="card-custom shadow-sm p-0 overflow-hidden h-100">
-                <div class="p-3 bg-danger text-white"><h6 class="m-0 fw-bold"><i class="fa-solid fa-store me-2"></i>1. Reparto Tiendas (Ordenado por Necesidad)</h6></div>
+                <div class="p-3 bg-danger text-white d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold"><i class="fa-solid fa-store me-2"></i>1. Reparto Tiendas</h6>
+                </div>
+                
+                <div class="bg-light p-2 border-bottom">
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="btnTiendaFilter" id="fT_all" checked onchange="filterTiendas('ALL')">
+                        <label class="btn btn-outline-danger btn-sm fw-bold" for="fT_all">Todas</label>
+
+                        <input type="radio" class="btn-check" name="btnTiendaFilter" id="fT_may" onchange="filterTiendas('MAYOREO')">
+                        <label class="btn btn-outline-danger btn-sm fw-bold" for="fT_may">Mayoreo</label>
+
+                        <input type="radio" class="btn-check" name="btnTiendaFilter" id="fT_aec" onchange="filterTiendas('AEC_DETALLE')">
+                        <label class="btn btn-outline-danger btn-sm fw-bold" for="fT_aec">AEC Detalle</label>
+
+                        <input type="radio" class="btn-check" name="btnTiendaFilter" id="fT_ds" onchange="filterTiendas('DS')">
+                        <label class="btn btn-outline-danger btn-sm fw-bold" for="fT_ds">DS/Vitrina</label>
+                    </div>
+                </div>
+
                 <div class="table-responsive p-2">
                     <table id="tiendasTable" class="table table-striped table-hover w-100 align-middle text-center">
                         <thead class="table-dark" style="font-size: 0.8rem;">
@@ -214,4 +232,5 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="app.js"></script>
 </body>
+</html>
 </html>
