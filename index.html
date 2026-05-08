@@ -18,12 +18,17 @@
         .slogan { color: var(--brand-red); font-size: 0.85rem; font-weight: bold; text-transform: uppercase; }
         .card-custom { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: none; }
         
-        .select2-container--bootstrap-5 .select2-selection--multiple { min-height: 38px !important; max-height: 100px !important; overflow-y: auto !important; }
+        /* CORRECCIÓN DEL FILTRO DISTORSIONADO */
+        .select2-container--bootstrap-5 .select2-selection--multiple { 
+            min-height: 38px !important; 
+            max-height: 38px !important; 
+            overflow-y: auto !important; 
+        }
 
         .status-pill { padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 0.75rem; text-align: center; min-width: 110px; display: inline-block; }
-        .bg-verde { background-color: #198754; color: white; border: 1px solid #146c43; } /* Verde vivo */
-        .bg-amarillo { background-color: #ffc107; color: #212529; border: 1px solid #ffcd39; } /* Amarillo vivo */
-        .bg-rojo { background-color: #dc3545; color: white; border: 1px solid #b02a37; } /* Rojo vivo */
+        .bg-verde { background-color: #198754; color: white; border: 1px solid #146c43; } 
+        .bg-amarillo { background-color: #ffc107; color: #212529; border: 1px solid #ffcd39; } 
+        .bg-rojo { background-color: #dc3545; color: white; border: 1px solid #b02a37; } 
         .bg-gris { background-color: #6c757d; color: white; border: 1px solid #5c636a; }
         .bg-morado { background-color: #6f42c1; color: white; border: 1px solid #59359a; } 
 
@@ -67,12 +72,21 @@
 <div class="container-fluid px-4 hidden-screen" id="mainScreen">
     
     <div class="card-custom border-top border-danger border-3 py-3 mb-3 shadow-sm">
-        <div class="row g-2 align-items-end">
+        <div class="row g-2 align-items-center">
             <div class="col-md-2"><label class="fw-bold mb-1 small">📁 División</label><select id="f_div" class="form-select" multiple></select></div>
             <div class="col-md-2"><label class="fw-bold mb-1 small">🛍️ Categoría</label><select id="f_cat" class="form-select" multiple></select></div>
             <div class="col-md-2"><label class="fw-bold mb-1 small">📦 Grupo</label><select id="f_grp" class="form-select" multiple></select></div>
             <div class="col-md-2"><label class="fw-bold mb-1 small">⏳ Antigüedad</label><select id="f_age" class="form-select" multiple></select></div>
-            <div class="col-md-2"><label class="fw-bold mb-1 small text-primary" id="lbl_f_status">📊 Estado</label><select id="f_status" class="form-select" multiple></select></div>
+            
+            <div class="col-md-2">
+                <label class="fw-bold mb-1 small text-primary" id="lbl_f_status">📊 Estado</label>
+                <select id="f_status" class="form-select" multiple></select>
+                <div class="form-check mt-2" id="toggleTemporadaContainer" style="display:none;">
+                    <input class="form-check-input border-secondary" type="checkbox" id="hideFueraTemporada">
+                    <label class="form-check-label small fw-bold text-secondary" style="cursor:pointer;" for="hideFueraTemporada">Ocultar Fuera de Temp.</label>
+                </div>
+            </div>
+            
             <div class="col-md-2"><button id="resetFilters" class="btn btn-danger w-100 fw-bold shadow-sm"><i class="fa-solid fa-filter-circle-xmark me-2"></i>Limpiar Filtros</button></div>
         </div>
     </div>
@@ -145,7 +159,7 @@
             <h3 class="fw-bold text-primary mb-0" id="detSaldoTotal">0</h3>
         </div></div>
         <div class="col-md-3"><div class="card-custom text-center border-start border-warning border-4 shadow-sm p-3">
-            <div class="small fw-bold text-muted text-uppercase" id="detFaltanteTitle">Faltante Operativo</div>
+            <div class="small fw-bold text-muted text-uppercase" id="detFaltanteTitle">Saldo Insuficiente</div>
             <h3 class="fw-bold text-dark mb-0" id="detFaltante">0</h3>
         </div></div>
         <div class="col-md-3"><div class="card-custom text-center border-start border-success border-4 shadow-sm p-3">
@@ -157,7 +171,7 @@
     <div class="row g-3">
         <div class="col-md-5">
             <div class="card-custom shadow-sm p-0 overflow-hidden h-100">
-                <div class="p-3 bg-danger text-white"><h6 class="m-0 fw-bold"><i class="fa-solid fa-store me-2"></i>1. Reparto Tiendas</h6></div>
+                <div class="p-3 bg-danger text-white"><h6 class="m-0 fw-bold"><i class="fa-solid fa-store me-2"></i>1. Reparto Tiendas (Ordenado por Necesidad)</h6></div>
                 <div class="table-responsive p-2">
                     <table id="tiendasTable" class="table table-striped table-hover w-100 align-middle text-center">
                         <thead class="table-dark" style="font-size: 0.8rem;">
@@ -171,7 +185,7 @@
 
         <div class="col-md-7">
             <div class="card-custom shadow-sm p-0 overflow-hidden h-100">
-                <div class="p-3 bg-dark text-white"><h6 class="m-0 fw-bold"><i class="fa-solid fa-barcode me-2"></i>2. SKUs en Bodega (Inventario Físico)</h6></div>
+                <div class="p-3 bg-dark text-white"><h6 class="m-0 fw-bold"><i class="fa-solid fa-barcode me-2"></i>2. SKUs en Bodega (Ordenado por Saldo)</h6></div>
                 <div class="table-responsive p-2">
                     <table id="skuTable" class="table table-striped table-hover w-100 align-middle text-center">
                         <thead class="table-dark" style="font-size: 0.8rem;">
