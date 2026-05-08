@@ -8,7 +8,6 @@ let mainTable, skuTable, tiendasTable;
 let necessityChart, statusChart;
 let currentView = 'gerencial'; 
 
-// FECHA AUTOMÁTICA DEL SISTEMA
 const TODAY = new Date(); 
 const CURRENT_MONTH = TODAY.getMonth() + 1;
 
@@ -68,7 +67,6 @@ function checkSeason(div, cat, grp) {
 // ==========================================
 $(document).ready(function() {
     
-    // Inyecta la fecha automática en la esquina superior
     $('#fechaActual').text('📅 ' + formatearFecha(TODAY));
 
     mainTable = $('#mainTable').DataTable({
@@ -84,7 +82,7 @@ $(document).ready(function() {
         pageLength: 25, 
         lengthChange: true, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
-        order: [], // Desactivamos el orden automático para respetar el orden de mayor a menor desde JS
+        order: [], 
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
             { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') },
@@ -97,7 +95,7 @@ $(document).ready(function() {
         pageLength: 25, 
         lengthChange: true, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
-        order: [], // Desactivamos el orden automático
+        order: [], 
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
             { targets: [4], render: $.fn.dataTable.render.number(',', '.', 0, '') },
@@ -113,7 +111,6 @@ $(document).ready(function() {
     $('#f_cat').on('select2:select select2:unselect', function() { updateSubFilters('cat'); applyFilters(); });
     $('#f_grp, #f_age, #f_status').on('select2:select select2:unselect', function() { applyFilters(); });
     
-    // Evento del nuevo checkbox "Ocultar Fuera de Temp"
     $('#hideFueraTemporada').on('change', function() { applyFilters(); });
     
     $('#resetFilters').on('click', function() { 
@@ -134,6 +131,23 @@ $(document).ready(function() {
 });
 
 // ==========================================
+// FUNCIÓN FILTRO DE TIENDAS (EL NUEVO MENÚ)
+// ==========================================
+function filterTiendas(type) {
+    tiendasTable.column(0).search(''); // Limpiamos primero
+    
+    if (type === 'MAYOREO') {
+        tiendasTable.column(0).search('MAYOREO', false, true).draw();
+    } else if (type === 'AEC_DETALLE') {
+        tiendasTable.column(0).search('AEC DETALLE', false, true).draw();
+    } else if (type === 'DS') {
+        tiendasTable.column(0).search('DS|VITRINA', true, false).draw();
+    } else {
+        tiendasTable.draw(); // ALL
+    }
+}
+
+// ==========================================
 // EXTRACCIÓN ZIP
 // ==========================================
 async function fetchAndUnzip(url) {
@@ -149,7 +163,7 @@ async function fetchAndUnzip(url) {
             break;
         }
     }
-    if (!csvText) throw new Error("El archivo ZIP está completamente vacío.");
+    if (!csvText) throw new Error("El archivo ZIP está vacío.");
     return csvText;
 }
 
@@ -202,8 +216,11 @@ function loadCSVData() {
             let necMay = Math.round(parseFloat(row[k_nMayAEC]) || 0);
             let necDS = Math.round(parseFloat(row[k_nDS]) || 0);
 
-            // CORRECCIÓN MAYOREO: Solo si tiene "Mayoreo" en el nombre, o necesidad mayoreo > 0.
-            let isMayoreo = tiendaNombre.toUpperCase().includes("MAYOREO") || necMay > 0;
+            let isMayoreo = tiendaNombre.toUpperCase().includes("MAYOREO") || 
+                            tiendaNombre.toUpperCase().includes("AEC") || 
+                            tiendaNombre.toUpperCase().includes("DS") || 
+                            necMay > 0;
+
             let tipoTienda = isMayoreo ? "MAYOREO" : "DETALLE";
 
             let sugAEC = Math.round(parseFloat(row[k_sAEC]) || 0);
@@ -345,7 +362,7 @@ function applyFilters() {
         (!f.g.length || f.g.includes(r.grp)) && 
         (!f.a.length || f.a.includes(r.age_cat)) && 
         (!f.s.length || (currentView === 'gerencial' ? f.s.includes(r.est_gerencial) : f.s.includes(r.est_operativo))) &&
-        (!hideTemp || r.est_operativo !== 'Fuera de Temporada') // APLICA EL SWITCH
+        (!hideTemp || r.est_operativo !== 'Fuera de Temporada')
     );
     renderDashboard(filtered);
 }
@@ -411,7 +428,6 @@ function updateUI(s, n, k, divSum) {
 
     let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
     
-    // Gráfico Valla SIN LINEAS
     if(necessityChart) necessityChart.destroy();
     necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), { 
         type: 'bar', 
@@ -437,7 +453,6 @@ function switchView(v) {
     $('.view-btn').removeClass('active'); 
     $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active'); 
     
-    // Muestra u oculta el boton de temporada segun la vista
     if(v === 'operativo') {
         $('#toggleTemporadaContainer').show();
     } else {
@@ -452,6 +467,10 @@ function switchView(v) {
 function openDrillDown(g) {
     $('#mainScreen').addClass('hidden-screen'); $('#drillDownScreen').removeClass('hidden-screen');
     $('#detailDivCat').text(`${g.div} > ${g.cat}`); $('#detailGroupName').text(g.grp);
+
+    // Reinicia los filtros de tienda por defecto cada vez que abres un grupo
+    $('#fT_all').prop('checked', true);
+    tiendasTable.column(0).search('');
 
     let nT = g.total_nec; 
     let sT = g.s_aec + g.s_ds; 
@@ -473,7 +492,6 @@ function openDrillDown(g) {
         $('#detEstadoBadge').html(label(g.est_operativo, mColor));
     }
 
-    // ORDENAR TIENDAS DE MAYOR A MENOR NECESIDAD
     g.tiendas.sort((a, b) => b.necesidad - a.necesidad);
 
     tiendasTable.clear();
@@ -487,7 +505,6 @@ function openDrillDown(g) {
             badge = label('Ok', 'bg-verde');
         }
 
-        // VITRINA Y DS = ROJO
         let isDS = t.nombre.toUpperCase().includes('DS') || t.nombre.toUpperCase().includes('VITRINA');
         let nombreDisplay = isDS ? `<b class="text-danger">${t.nombre}</b>` : `<b>${t.nombre}</b>`;
         
@@ -497,7 +514,6 @@ function openDrillDown(g) {
     });
     tiendasTable.draw();
 
-    // ORDENAR SKUs DE MAYOR A MENOR SALDO TOTAL
     g.skus.sort((a, b) => b.total - a.total);
 
     skuTable.clear();
