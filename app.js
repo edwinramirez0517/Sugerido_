@@ -19,7 +19,7 @@ const reglasLogisticas = {
 };
 
 // ==========================================
-// FUNCIONES AUXILIARES
+// FUNCIONES DE FECHAS
 // ==========================================
 function excelToDate(excelDate) {
     if (!excelDate) return null;
@@ -47,6 +47,9 @@ function label(text, className) {
     return `<span class="status-pill ${className}">${text}</span>`;
 }
 
+// ==========================================
+// EVALUAR TEMPORADAS
+// ==========================================
 function checkSeason(div, cat, grp) {
     let text = `${div} ${cat} ${grp}`.toUpperCase();
     if (text.includes("ESCOLAR") || text.includes("MOCHILA") || text.includes("CUADERNO")) return [12, 1, 2].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
@@ -60,35 +63,32 @@ function checkSeason(div, cat, grp) {
 }
 
 // ==========================================
-// CONFIGURACIÓN DE DISEÑO DE IMPRESIÓN
+// CONFIGURACIÓN DE IMPRESIÓN MATRIZ GENERAL
 // ==========================================
-const printConfig = (titleText) => ({
+const printConfigMain = {
     extend: 'print',
-    text: '<i class="fa-solid fa-print me-1"></i> Imprimir',
+    text: '<i class="fa-solid fa-print me-1"></i> Imprimir Matriz',
     className: 'btn btn-outline-primary btn-sm shadow-sm me-2',
-    title: '', 
+    title: '',
     customize: function (win) {
-        $(win.document.body)
-            .css('font-family', '"Segoe UI", sans-serif')
-            .css('font-size', '10px') 
-            .css('background', '#fff');
-
+        $(win.document.body).css('font-family', '"Segoe UI", sans-serif').css('font-size', '9px').css('background', '#fff');
+        
+        // Magia para forzar los colores de fondo e imprimir horizontal
+        $(win.document.head).append('<style>@page { size: landscape; margin: 1cm; } body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }</style>');
+        
         $(win.document.body).prepend(
-            '<div style="text-align:center; margin-bottom:15px; padding-bottom: 10px; border-bottom: 2px solid #E1251B;">' +
-            '<h2 style="color:#012094; margin:0; font-weight:900;">El Compadre</h2>' +
-            '<h4 style="color:#E1251B; margin:0; text-transform:uppercase;">' + titleText + '</h4>' +
-            '<p style="margin:0; font-size:11px; color:#555;">Generado: ' + formatearFecha(TODAY) + '</p>' +
-            '</div>'
+            '<div style="text-align:center; margin-bottom:10px; border-bottom: 2px solid #E1251B; padding-bottom:5px;">' +
+            '<h3 style="color:#012094; margin:0; font-weight:bold;">El Compadre - Matriz General de Abastecimiento</h3>' +
+            '<p style="margin:0; font-size:10px; color:#555;">Generado: ' + formatearFecha(TODAY) + '</p></div>'
         );
-
+        
         let table = $(win.document.body).find('table');
         table.removeClass('table-bordered').addClass('table-sm');
-        table.css('width', '100%').css('border-collapse', 'collapse').css('margin-bottom', '20px');
-        table.find('th, td').css('border', '1px solid #ddd').css('padding', '6px');
-        table.find('th').css('background-color', '#012094').css('color', 'white').css('text-align', 'center');
-        table.find('.status-pill').css('border-radius', '4px').css('padding', '2px 5px');
+        table.css('width', '100%').css('border-collapse', 'collapse');
+        table.find('th, td').css('border', '1px solid #ccc').css('padding', '3px');
+        table.find('th').css('background-color', '#012094').css('color', 'white');
     }
-});
+};
 
 const excelConfig = {
     extend: 'excelHtml5',
@@ -103,37 +103,37 @@ $(document).ready(function() {
     
     $('#fechaActual').text('📅 ' + formatearFecha(TODAY));
 
+    // Tabla principal ahora tiene botones exportadores arriba a la izquierda
     mainTable = $('#mainTable').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 25, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
         dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
-        buttons: [ printConfig('Matriz General de Abastecimiento'), excelConfig ],
+        buttons: [ printConfigMain, excelConfig ],
         columnDefs: [ { className: "text-center align-middle", targets: "_all" }, { targets: [2, 3, 4, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') }, { targets: [5, 7, 8], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } } ],
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
 
+    // Se eliminaron los botones individuales aquí porque ahora hay un botón maestro en el HTML
     tiendasTable = $('#tiendasTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, 
         pageLength: 25, 
+        lengthChange: true, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
-        dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
-        buttons: [ printConfig('Detalle Operativo por Tienda') ],
         order: [], 
         columnDefs: [
             { className: "text-center align-middle", targets: [0,1,2,3,4] }, 
             { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') },
             { targets: [3], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } },
-            { targets: [5], visible: false } // Columna Oculta para el filtro de botones
+            { targets: [5], visible: false } // Columna Oculta para el filtro anti-errores
         ]
     });
 
     skuTable = $('#skuTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, 
         pageLength: 25, 
+        lengthChange: true, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
-        dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
-        buttons: [ printConfig('Inventario de SKUs en Bodega') ],
         order: [], 
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
@@ -254,7 +254,7 @@ function loadCSVData() {
             let sugAEC = Math.round(parseFloat(row[k_sAEC]) || 0);
             let sugDS = Math.round(parseFloat(row[k_sDS]) || 0);
 
-            // CLASIFICACIÓN DE TIENDAS CORREGIDA PARA "VITR"
+            // CLASIFICACIÓN CORREGIDA: Incluye "VITR" para que agarre cualquier nombre truncado como "LA VITRINA" o "VITR"
             let categoryFilter = "AEC_DETALLE";
             let tipoTienda = "DETALLE";
 
@@ -280,7 +280,7 @@ function loadCSVData() {
                 dataMap[grp].tiendas.push({ 
                     nombre: tiendaNombre, 
                     tipo: tipoTienda, 
-                    categoria_filtro: categoryFilter,
+                    categoria_filtro: categoryFilter, 
                     sugerido: rowTotalSug, 
                     saldo_t: Math.round(parseFloat(row[k_saldoT]) || 0), 
                     necesidad: rowTotalNec 
@@ -529,7 +529,7 @@ function openDrillDown(g) {
         let mColor = g.est_gerencial === 'Sano' ? 'bg-verde' : (g.est_gerencial === 'Comprar Urgente' ? 'bg-rojo' : (g.est_gerencial === 'Inmovilizado' ? 'bg-morado' : 'bg-amarillo'));
         $('#detEstadoBadge').html(label(g.est_gerencial, mColor));
     } else {
-        $('#detFaltanteTitle').text('Saldo Insuficiente (Faltan)');
+        $('#detFaltanteTitle').text('Saldo Insuficiente');
         $('#detFaltante').text(fT.toLocaleString('en-US')).removeClass('text-dark').addClass('text-danger');
         let mColor = g.est_operativo === 'Completado' ? 'bg-verde' : (g.est_operativo === 'Quiebre' || g.est_operativo === 'Faltante' ? 'bg-rojo' : (g.est_operativo === 'Residual' || g.est_operativo === 'Fuera de Temporada' ? 'bg-gris' : 'bg-amarillo'));
         $('#detEstadoBadge').html(label(g.est_operativo, mColor));
