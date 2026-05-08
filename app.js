@@ -19,7 +19,7 @@ const reglasLogisticas = {
 };
 
 // ==========================================
-// FUNCIONES DE FECHAS
+// FUNCIONES DE FECHAS Y TEXTO
 // ==========================================
 function excelToDate(excelDate) {
     if (!excelDate) return null;
@@ -63,7 +63,7 @@ function checkSeason(div, cat, grp) {
 }
 
 // ==========================================
-// INICIALIZACIÓN DE TABLAS
+// INICIALIZACIÓN DE TABLAS (AHORA CON BOTONES DE IMPRIMIR Y EXCEL)
 // ==========================================
 $(document).ready(function() {
     
@@ -73,6 +73,11 @@ $(document).ready(function() {
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 25, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
+        dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
+        buttons: [
+            { extend: 'print', text: '<i class="fa-solid fa-print me-1"></i> Imprimir', className: 'btn btn-outline-primary btn-sm shadow-sm me-2' },
+            { extend: 'excelHtml5', text: '<i class="fa-solid fa-file-excel me-1"></i> Excel', className: 'btn btn-outline-success btn-sm shadow-sm' }
+        ],
         columnDefs: [ { className: "text-center align-middle", targets: "_all" }, { targets: [2, 3, 4, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') }, { targets: [5, 7, 8], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } } ],
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
@@ -80,21 +85,24 @@ $(document).ready(function() {
     tiendasTable = $('#tiendasTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, 
         pageLength: 25, 
-        lengthChange: true, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
+        dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
+        buttons: [ { extend: 'print', text: '<i class="fa-solid fa-print me-1"></i>', className: 'btn btn-outline-primary btn-sm' } ],
         order: [], 
         columnDefs: [
-            { className: "text-center align-middle", targets: "_all" }, 
+            { className: "text-center align-middle", targets: [0,1,2,3,4] }, 
             { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') },
-            { targets: [3], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } }
+            { targets: [3], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } },
+            { targets: [5], visible: false } // Columna Oculta para el filtro anti-errores
         ]
     });
 
     skuTable = $('#skuTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, 
         pageLength: 25, 
-        lengthChange: true, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
+        dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
+        buttons: [ { extend: 'print', text: '<i class="fa-solid fa-print me-1"></i>', className: 'btn btn-outline-primary btn-sm' } ],
         order: [], 
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
@@ -131,24 +139,19 @@ $(document).ready(function() {
 });
 
 // ==========================================
-// FUNCIÓN FILTRO DE TIENDAS (EL NUEVO MENÚ)
+// FUNCIÓN FILTRO DE TIENDAS ANTI-ERRORES
 // ==========================================
 function filterTiendas(type) {
-    tiendasTable.column(0).search(''); // Limpiamos primero
-    
-    if (type === 'MAYOREO') {
-        tiendasTable.column(0).search('MAYOREO', false, true).draw();
-    } else if (type === 'AEC_DETALLE') {
-        tiendasTable.column(0).search('AEC DETALLE', false, true).draw();
-    } else if (type === 'DS') {
-        tiendasTable.column(0).search('DS|VITRINA', true, false).draw();
+    if (type === 'ALL') {
+        tiendasTable.column(5).search('').draw();
     } else {
-        tiendasTable.draw(); // ALL
+        // Usa Regex para buscar la palabra exacta en la columna oculta
+        tiendasTable.column(5).search('^' + type + '$', true, false).draw();
     }
 }
 
 // ==========================================
-// EXTRACCIÓN ZIP
+// EXTRACCIÓN ZIP Y PROCESAMIENTO
 // ==========================================
 async function fetchAndUnzip(url) {
     const response = await fetch(url);
@@ -212,19 +215,29 @@ function loadCSVData() {
             }
 
             let tiendaNombre = (row[k_tienda] || "").trim();
+            let upperName = tiendaNombre.toUpperCase();
+            
             let necDet = Math.round(parseFloat(row[k_nDetAEC]) || 0);
             let necMay = Math.round(parseFloat(row[k_nMayAEC]) || 0);
             let necDS = Math.round(parseFloat(row[k_nDS]) || 0);
-
-            let isMayoreo = tiendaNombre.toUpperCase().includes("MAYOREO") || 
-                            tiendaNombre.toUpperCase().includes("AEC") || 
-                            tiendaNombre.toUpperCase().includes("DS") || 
-                            necMay > 0;
-
-            let tipoTienda = isMayoreo ? "MAYOREO" : "DETALLE";
-
+            
             let sugAEC = Math.round(parseFloat(row[k_sAEC]) || 0);
             let sugDS = Math.round(parseFloat(row[k_sDS]) || 0);
+
+            // CLASIFICACIÓN DE TIENDAS EXACTA
+            let categoryFilter = "AEC_DETALLE";
+            let tipoTienda = "DETALLE";
+
+            if (upperName.includes("DS") || upperName.includes("VITRINA") || upperName.includes("DANILO")) {
+                categoryFilter = "DS";
+                tipoTienda = "MAYOREO"; // Para el gerente cuenta como mayoreo
+            } else if (upperName.includes("MAYOREO") || necMay > 0) {
+                categoryFilter = "MAYOREO";
+                tipoTienda = "MAYOREO";
+            } else {
+                categoryFilter = "AEC_DETALLE";
+                tipoTienda = "DETALLE";
+            }
 
             dataMap[grp].n_aec += necDet;
             dataMap[grp].n_may += necMay;
@@ -233,10 +246,12 @@ function loadCSVData() {
             let rowTotalNec = necDet + necMay + necDS;
             let rowTotalSug = sugAEC + sugDS; 
             
-            if ((rowTotalNec > 0 || rowTotalSug > 0) && tiendaNombre !== "") {
+            // SE QUITÓ LA CONDICIÓN PARA QUE APAREZCAN LAS 27 TIENDAS SIEMPRE
+            if (tiendaNombre !== "") {
                 dataMap[grp].tiendas.push({ 
                     nombre: tiendaNombre, 
                     tipo: tipoTienda, 
+                    categoria_filtro: categoryFilter, // Para el filtro anti-errores
                     sugerido: rowTotalSug, 
                     saldo_t: Math.round(parseFloat(row[k_saldoT]) || 0), 
                     necesidad: rowTotalNec 
@@ -468,9 +483,8 @@ function openDrillDown(g) {
     $('#mainScreen').addClass('hidden-screen'); $('#drillDownScreen').removeClass('hidden-screen');
     $('#detailDivCat').text(`${g.div} > ${g.cat}`); $('#detailGroupName').text(g.grp);
 
-    // Reinicia los filtros de tienda por defecto cada vez que abres un grupo
     $('#fT_all').prop('checked', true);
-    tiendasTable.column(0).search('');
+    tiendasTable.column(5).search(''); // Limpia el filtro invisible
 
     let nT = g.total_nec; 
     let sT = g.s_aec + g.s_ds; 
@@ -505,12 +519,15 @@ function openDrillDown(g) {
             badge = label('Ok', 'bg-verde');
         }
 
-        let isDS = t.nombre.toUpperCase().includes('DS') || t.nombre.toUpperCase().includes('VITRINA');
+        let isDS = t.nombre.toUpperCase().includes('DS') || t.nombre.toUpperCase().includes('VITRINA') || t.nombre.toUpperCase().includes('DANILO');
         let nombreDisplay = isDS ? `<b class="text-danger">${t.nombre}</b>` : `<b>${t.nombre}</b>`;
-        
         let col_req = { display: `<b class="text-danger fs-6">${t.necesidad.toLocaleString('en-US')}</b>`, sortValue: t.necesidad };
         
-        tiendasTable.row.add([ `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, t.sugerido, t.saldo_t, col_req, badge ]);
+        tiendasTable.row.add([ 
+            `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, 
+            t.sugerido, t.saldo_t, col_req, badge, 
+            t.categoria_filtro // Índice 5 (Oculto)
+        ]);
     });
     tiendasTable.draw();
 
