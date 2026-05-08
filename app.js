@@ -47,7 +47,7 @@ function label(text, className) {
 }
 
 // ==========================================
-// EVALUAR TEMPORADAS 
+// EVALUAR TEMPORADAS
 // ==========================================
 function checkSeason(div, cat, grp) {
     let text = `${div} ${cat} ${grp}`.toUpperCase();
@@ -68,7 +68,7 @@ $(document).ready(function() {
     mainTable = $('#mainTable').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 10, lengthMenu: [10, 25, 50, 100],
-        columnDefs: [ { className: "text-center align-middle", targets: "_all" }, { targets: [2, 3, 4, 5, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') }, { targets: [7, 8], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } } ],
+        columnDefs: [ { className: "text-center align-middle", targets: "_all" }, { targets: [2, 3, 4, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') }, { targets: [5, 7, 8], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } } ],
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
 
@@ -102,17 +102,14 @@ $(document).ready(function() {
 });
 
 // ==========================================
-// EXTRACCIÓN ZIP BLINDADA
+// EXTRACCIÓN ZIP
 // ==========================================
 async function fetchAndUnzip(url) {
     const response = await fetch(url);
     if (!response.ok) throw new Error("No se pudo descargar el archivo: " + url);
     const blob = await response.blob();
     const zip = await JSZip.loadAsync(blob);
-    
     let csvText = null;
-    
-    // Abrimos el primer archivo real que encuentre (ignorando carpetas)
     for (let filename of Object.keys(zip.files)) {
         let fileObj = zip.files[filename];
         if (!fileObj.dir) {
@@ -120,10 +117,7 @@ async function fetchAndUnzip(url) {
             break;
         }
     }
-    
-    if (!csvText) {
-        throw new Error("El archivo ZIP está completamente vacío.");
-    }
+    if (!csvText) throw new Error("El archivo ZIP está completamente vacío.");
     return csvText;
 }
 
@@ -139,22 +133,31 @@ function loadCSVData() {
 
         let dataMap = {};
 
-        // MOTOR BÚSQUEDA COLUMNAS
+        // MOTOR BÚSQUEDA COLUMNAS ESTRICTO (Corrige el desfase de columnas)
         let headersSug = Object.keys(sugeridoRaw[0]);
-        const findKey = (keyword) => headersSug.find(h => h.trim().toLowerCase().includes(keyword.toLowerCase()));
+        const getCol = (headers, exactName, fallback) => {
+            let match = headers.find(h => h.trim().toLowerCase() === exactName.toLowerCase());
+            if (match) return match;
+            match = headers.find(h => h.trim().toLowerCase() === fallback.toLowerCase());
+            if (match) return match;
+            match = headers.find(h => h.trim().toLowerCase().includes(exactName.toLowerCase()));
+            if (match) return match;
+            match = headers.find(h => h.trim().toLowerCase().includes(fallback.toLowerCase()));
+            return match || exactName;
+        };
         
-        let k_grp = findKey("grupo") || "Grupo";
-        let k_div = findKey("division") || "Division";
-        let k_cat = findKey("categoria") || "Categoria";
-        let k_grpId = findKey("grupo id") || "Grupo ID";
-        let k_tienda = findKey("nombre tienda") || "Nombre Tienda";
-        let k_tipo = findKey("tipo de tienda") || "Tipo de Tienda";
-        let k_saldoT = findKey("saldo tienda") || "Saldo Tienda";
-        let k_sAEC = findKey("sugerido aec") || "Sugerido AEC";
-        let k_sDS = findKey("sugerido ds") || "Sugerido DS";
-        let k_nDetAEC = findKey("necesidad detalle aec") || "Necesidad detalle AEC";
-        let k_nMayAEC = findKey("necesidad mayoreo aec") || "Necesidad mayoreo AEC";
-        let k_nDS = findKey("necesidad ds") || "Necesidad DS";
+        let k_grp = getCol(headersSug, "Grupo", "grupo");
+        let k_div = getCol(headersSug, "Division", "division");
+        let k_cat = getCol(headersSug, "Categoria", "categoria");
+        let k_grpId = getCol(headersSug, "Grupo ID", "grupo id");
+        let k_tienda = getCol(headersSug, "Nombre Tienda", "tienda");
+        let k_tipo = getCol(headersSug, "Tipo de Tienda", "tipo");
+        let k_saldoT = getCol(headersSug, "Saldo Tienda", "saldo tienda");
+        let k_sAEC = getCol(headersSug, "Sugerido AEC", "aec");
+        let k_sDS = getCol(headersSug, "Sugerido DS", "ds");
+        let k_nDetAEC = getCol(headersSug, "Necesidad detalle AEC", "detalle aec");
+        let k_nMayAEC = getCol(headersSug, "Necesidad mayoreo AEC", "mayoreo aec");
+        let k_nDS = getCol(headersSug, "Necesidad DS", "necesidad ds");
 
         sugeridoRaw.forEach(row => {
             let grp = (row[k_grp] || "").trim();
@@ -185,16 +188,14 @@ function loadCSVData() {
         });
 
         let headersSal = Object.keys(saldoRaw[0]);
-        const findKeySal = (keyword) => headersSal.find(h => h.trim().toLowerCase().includes(keyword.toLowerCase()));
-        
-        let k_sGrp = findKeySal("grupo") || "Grupo";
-        let k_sProd = findKeySal("producto") || "Producto";
-        let k_sMarca = findKeySal("marca") || "Marca";
-        let k_sDesc = findKeySal("prodnombre") || "ProdNombre";
-        let k_sFechaEC = findKeySal("ultfecha_ec") || "UltFecha_EC";
-        let k_sFechaDS = findKeySal("ultfecha_ds") || "UltFecha_DS";
-        let k_sSaldoEC = findKeySal("salbound_ec") || "SaldoUND_EC";
-        let k_sSaldoDS = findKeySal("salbound_ds") || "SaldoUND_DS";
+        let k_sGrp = getCol(headersSal, "Grupo", "grupo");
+        let k_sProd = getCol(headersSal, "Producto", "producto");
+        let k_sMarca = getCol(headersSal, "Marca", "marca");
+        let k_sDesc = getCol(headersSal, "ProdNombre", "prodnombre");
+        let k_sFechaEC = getCol(headersSal, "UltFecha_EC", "ultfecha_ec");
+        let k_sFechaDS = getCol(headersSal, "UltFecha_DS", "ultfecha_ds");
+        let k_sSaldoEC = getCol(headersSal, "SaldoUND_EC", "salbound_ec");
+        let k_sSaldoDS = getCol(headersSal, "SaldoUND_DS", "salbound_ds");
 
         saldoRaw.forEach(row => {
             let grp = (row[k_sGrp] || "").trim();
@@ -310,6 +311,12 @@ function renderDashboard(data) {
         if(!divSum[row.div]) divSum[row.div] = 0; divSum[row.div] += n;
 
         let col7 = { display: '', sortValue: 0 }; let col8 = { display: '', sortValue: 0 };
+        
+        // DS en Rojo para destacarlo
+        let dsCol = { 
+            display: row.n_ds > 0 ? `<span class="text-danger fw-bold">${row.n_ds.toLocaleString('en-US')}</span>` : '0', 
+            sortValue: row.n_ds 
+        };
 
         if (currentView === 'gerencial') {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0); col7.sortValue = cob;
@@ -323,7 +330,7 @@ function renderDashboard(data) {
             if (row.est_operativo === 'Quiebre' || row.est_operativo === 'Faltante') k.m1++; else if (row.est_operativo === 'Prioridad Alta' || row.est_operativo === 'Surtido Normal') k.m2++; else if (row.est_operativo === 'Fuera de Temporada') k.m5++; else k.m4++;
         }
 
-        mainTable.row.add([ `<b>${row.grp}</b><br><small class="text-muted">${row.grp_id}</small>`, row.div, s, row.n_aec, row.n_may, row.n_ds, n, col7, col8 ]);
+        mainTable.row.add([ `<b>${row.grp}</b><br><small class="text-muted">${row.grp_id}</small>`, row.div, s, row.n_aec, row.n_may, dsCol, n, col7, col8 ]);
     });
     
     mainTable.draw(); updateUI(tS, tN, k, divSum);
@@ -350,6 +357,28 @@ function openDrillDown(g) {
     $('#mainScreen').addClass('hidden-screen'); $('#drillDownScreen').removeClass('hidden-screen');
     $('#detailDivCat').text(`${g.div} > ${g.cat}`); $('#detailGroupName').text(g.grp);
 
+    // TARJETAS DE KPIS DEL DETALLE
+    let nT = g.total_nec; 
+    let sT = g.s_aec + g.s_ds; 
+    let fT = nT - sT > 0 ? nT - sT : 0;
+    
+    $('#detNecTotal').text(nT.toLocaleString('en-US')); 
+    $('#detSaldoTotal').text(sT.toLocaleString('en-US'));
+    
+    if (currentView === 'gerencial') {
+        $('#detFaltanteTitle').text('Cobertura'); 
+        let cob = nT > 0 ? (sT / nT * 100).toFixed(1) + '%' : '> 100%';
+        $('#detFaltante').text(cob).removeClass('text-danger').addClass('text-dark');
+        let mColor = g.est_gerencial === 'Sano' ? 'bg-verde' : (g.est_gerencial === 'Comprar Urgente' ? 'bg-rojo' : (g.est_gerencial === 'Inmovilizado' ? 'bg-morado' : 'bg-amarillo'));
+        $('#detEstadoBadge').html(label(g.est_gerencial, mColor));
+    } else {
+        $('#detFaltanteTitle').text('Faltante Operativo');
+        $('#detFaltante').text(fT.toLocaleString('en-US')).removeClass('text-dark').addClass('text-danger');
+        let mColor = g.est_operativo === 'Completado' ? 'bg-verde' : (g.est_operativo === 'Quiebre' || g.est_operativo === 'Faltante' ? 'bg-rojo' : (g.est_operativo === 'Residual' || g.est_operativo === 'Fuera de Temporada' ? 'bg-gris' : 'bg-amarillo'));
+        $('#detEstadoBadge').html(label(g.est_operativo, mColor));
+    }
+
+    // TABLA DE TIENDAS
     tiendasTable.clear();
     g.tiendas.forEach(t => {
         let badge = t.necesidad > t.saldo_t ? label('Urgente', 'bg-rojo') : label('Surtir', 'bg-amarillo');
@@ -357,6 +386,7 @@ function openDrillDown(g) {
     });
     tiendasTable.draw();
 
+    // TABLA DE SKUS
     skuTable.clear();
     g.skus.filter(s => s.total > 0).forEach(s => { skuTable.row.add([ `<span class="fw-bold text-primary">${s.cod}</span>`, `<small>${s.desc}</small>`, s.marca || '', s.f_ec || '', s.s_aec, s.f_ds || '', s.s_ds, `<b class="fs-6">${s.total.toLocaleString('en-US')}</b>` ]); });
     skuTable.draw();
