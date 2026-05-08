@@ -47,7 +47,7 @@ function label(text, className) {
 }
 
 // ==========================================
-// EVALUAR TEMPORADAS (CORREGIDO PARA MADRE/DAMA)
+// EVALUAR TEMPORADAS
 // ==========================================
 function checkSeason(div, cat, grp) {
     let text = `${div} ${cat} ${grp}`.toUpperCase();
@@ -84,13 +84,11 @@ $(document).ready(function() {
 
     $('#f_div, #f_cat, #f_grp, #f_age, #f_status').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Todos" });
     
-    // Iniciar carga de datos al abrir
     loadCSVData();
 
     $('#f_div').on('select2:select select2:unselect', function() { updateSubFilters('div'); applyFilters(); });
     $('#f_cat').on('select2:select select2:unselect', function() { updateSubFilters('cat'); applyFilters(); });
     $('#f_grp, #f_age, #f_status').on('select2:select select2:unselect', function() { applyFilters(); });
-
     $('#resetFilters').on('click', function() { $('#f_div, #f_cat, #f_grp, #f_age, #f_status').val(null).trigger('change.select2'); updateSubFilters('div'); applyFilters(); });
 
     $('#mainTable tbody').on('click', 'tr', function () {
@@ -104,7 +102,7 @@ $(document).ready(function() {
 });
 
 // ==========================================
-// EXTRACCIÓN ZIP Y MAPEO INTELIGENTE DE COLUMNAS
+// EXTRACCIÓN ZIP BLINDADA
 // ==========================================
 async function fetchAndUnzip(url) {
     const response = await fetch(url);
@@ -112,23 +110,24 @@ async function fetchAndUnzip(url) {
     const blob = await response.blob();
     const zip = await JSZip.loadAsync(blob);
     
-    let targetFile = null;
+    let csvText = null;
     
-    // Buscamos específicamente un archivo que termine en .csv y que no sea una carpeta oculta
-    zip.forEach(function (relativePath, zipEntry) {
+    // Recorremos todo el contenido del ZIP de forma segura
+    for (let relativePath in zip.files) {
+        let zipEntry = zip.files[relativePath];
+        // Si no es una carpeta y termina en .csv, lo extraemos
         if (!zipEntry.dir && relativePath.toLowerCase().endsWith('.csv')) {
-            targetFile = zipEntry;
+            csvText = await zipEntry.async("string");
+            break;
         }
-    });
-    
-    if (!targetFile) {
-        throw new Error("No se encontró ningún archivo .csv válido dentro del ZIP.");
     }
     
-    // Extrae el texto del archivo encontrado de forma segura
-    return await targetFile.async("string");
+    if (!csvText) {
+        throw new Error("No se encontró ningún archivo CSV dentro del ZIP.");
+    }
+    
+    return csvText;
 }
-
 
 function loadCSVData() {
     Promise.all([
@@ -142,9 +141,7 @@ function loadCSVData() {
 
         let dataMap = {};
 
-        // -----------------------------------------------------
-        // MOTOR INTELIGENTE DE BÚSQUEDA DE COLUMNAS (ANTI-ERRORES)
-        // -----------------------------------------------------
+        // MOTOR BÚSQUEDA COLUMNAS
         let headersSug = Object.keys(sugeridoRaw[0]);
         const findKey = (keyword) => headersSug.find(h => h.trim().toLowerCase().includes(keyword.toLowerCase()));
         
@@ -161,16 +158,12 @@ function loadCSVData() {
         let k_nMayAEC = findKey("necesidad mayoreo aec") || "Necesidad mayoreo AEC";
         let k_nDS = findKey("necesidad ds") || "Necesidad DS";
 
-        // 1. PROCESAR NECESIDADES
         sugeridoRaw.forEach(row => {
             let grp = (row[k_grp] || "").trim();
             if(!grp || grp === "SIN GRP") return;
 
             if(!dataMap[grp]) {
-                dataMap[grp] = {
-                    div: (row[k_div] || "").trim(), cat: (row[k_cat] || "").trim(), grp_id: (row[k_grpId] || "").trim(), grp: grp,
-                    s_aec: 0, s_ds: 0, n_aec: 0, n_may: 0, n_ds: 0, total_nec: 0, max_age: -1, tiendas: [], skus: []
-                };
+                dataMap[grp] = { div: (row[k_div] || "").trim(), cat: (row[k_cat] || "").trim(), grp_id: (row[k_grpId] || "").trim(), grp: grp, s_aec: 0, s_ds: 0, n_aec: 0, n_may: 0, n_ds: 0, total_nec: 0, max_age: -1, tiendas: [], skus: [] };
             }
 
             let tiendaNombre = (row[k_tienda] || "").trim();
@@ -193,7 +186,6 @@ function loadCSVData() {
             }
         });
 
-        // 2. PROCESAR SALDOS DE BODEGA
         let headersSal = Object.keys(saldoRaw[0]);
         const findKeySal = (keyword) => headersSal.find(h => h.trim().toLowerCase().includes(keyword.toLowerCase()));
         
@@ -203,7 +195,7 @@ function loadCSVData() {
         let k_sDesc = findKeySal("prodnombre") || "ProdNombre";
         let k_sFechaEC = findKeySal("ultfecha_ec") || "UltFecha_EC";
         let k_sFechaDS = findKeySal("ultfecha_ds") || "UltFecha_DS";
-        let k_sSaldoEC = findKeySal("salbound_ec") || "SaldoUND_EC"; // Soporta errores de tipeo
+        let k_sSaldoEC = findKeySal("salbound_ec") || "SaldoUND_EC";
         let k_sSaldoDS = findKeySal("salbound_ds") || "SaldoUND_DS";
 
         saldoRaw.forEach(row => {
@@ -229,7 +221,6 @@ function loadCSVData() {
 
         dataBase = Object.values(dataMap);
         
-        // 3. APLICAR REGLAS Y ESTADOS
         dataBase.forEach(row => { 
             row.age_cat = getAgeCategory(row.max_age); 
             let s = row.s_aec + row.s_ds;
@@ -256,24 +247,17 @@ function loadCSVData() {
 
         $('#loadingOverlay').fadeOut(500, function() {
             $('#mainScreen').removeClass('hidden-screen');
-            initFilters();
-            applyFilters(); 
+            initFilters(); applyFilters(); 
         });
 
     }).catch(error => { 
         console.error("Error FATAL:", error); 
         $('#loadingOverlay .spinner-border').hide();
         $('#loadingText').text("⚠️ Falla al leer los archivos");
-        $('#errorBox').removeClass('d-none').html(`
-            <b>Error procesando datos:</b> ${error.message}<br><br>
-            <small>Por favor verifica que subiste 'sugerido_v2.zip' a Github y recarga la página.</small>
-        `);
+        $('#errorBox').removeClass('d-none').html(`<b>Error procesando datos:</b> ${error.message}`);
     });
 }
 
-// ==========================================
-// FILTROS EN CASCADA
-// ==========================================
 function rebuildSelect(id, options, selectedArr) {
     let $el = $(id); $el.empty();
     options.forEach(o => { let isSelected = selectedArr ? selectedArr.includes(o) : false; $el.append(new Option(o, o, isSelected, isSelected)); });
@@ -315,9 +299,6 @@ function applyFilters() {
     renderDashboard(filtered);
 }
 
-// ==========================================
-// RENDERIZADO PRINCIPAL Y GRÁFICOS
-// ==========================================
 function renderDashboard(data) {
     mainTable.clear();
     let tS = 0, tN = 0; let k = { m1: 0, m2: 0, m3: 0, m4: 0, m5: 0 }; let divSum = {}; 
@@ -359,4 +340,7 @@ function updateUI(s, n, k, divSum) {
     if(necessityChart) necessityChart.destroy();
     necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), { type: 'bar', data: { labels: sorted.map(i => i[0]), datasets: [{ label: 'Necesidad', data: sorted.map(i => i[1]), backgroundColor: 'rgba(225, 37, 27, 0.85)', borderColor: '#E1251B', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { datalabels: { anchor: 'end', align: 'top', formatter: (v) => Math.round(v).toLocaleString('en-US'), font: { weight: 'bold', size: 10 }, color: '#E1251B' }, legend: { display: false } }, scales: { x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } } } } });
 
-    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Fa
+    let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Inactivos'];
+    let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#212529', '#ffc107', '#e9ecef'];
+    if(statusChart) statusChart.destroy();
+    statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), { type: 'doughnut', data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4+k.m5], backgroundColor: colorsPie, borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { b
