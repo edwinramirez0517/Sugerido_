@@ -7,7 +7,9 @@ let dataBase = [];
 let mainTable, skuTable, tiendasTable;
 let necessityChart, statusChart;
 let currentView = 'gerencial'; 
-const TODAY = new Date('2026-04-28'); 
+
+// 1. FECHA AUTOMÁTICA DEL SISTEMA
+const TODAY = new Date(); 
 const CURRENT_MONTH = TODAY.getMonth() + 1;
 
 const reglasLogisticas = {
@@ -62,27 +64,38 @@ function checkSeason(div, cat, grp) {
 }
 
 // ==========================================
-// INICIALIZACIÓN DE TABLAS
+// INICIALIZACIÓN DE TABLAS (CON PAGINACIÓN)
 // ==========================================
 $(document).ready(function() {
+    
+    // Inyectamos la fecha actual en la etiqueta superior
+    $('#fechaActual').text('📅 ' + formatearFecha(TODAY));
+
     mainTable = $('#mainTable').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
-        pageLength: 10, lengthMenu: [10, 25, 50, 100],
+        pageLength: 25, 
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
         columnDefs: [ { className: "text-center align-middle", targets: "_all" }, { targets: [2, 3, 4, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') }, { targets: [5, 7, 8], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } } ],
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
 
     tiendasTable = $('#tiendasTable').DataTable({ 
-        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, pageLength: 10, lengthChange: false,
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, 
+        pageLength: 25, 
+        lengthChange: true, // Activamos el selector
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
-            { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') }, // Sugerido y Saldo son números puros
-            { targets: [3], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } } // Necesidad es objeto con formato HTML
+            { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') },
+            { targets: [3], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } }
         ]
     });
 
     skuTable = $('#skuTable').DataTable({ 
-        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, pageLength: 10, lengthChange: false,
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, 
+        pageLength: 25, 
+        lengthChange: true, // Activamos el selector
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
             { targets: [4], render: $.fn.dataTable.render.number(',', '.', 0, '') },
@@ -125,7 +138,7 @@ async function fetchAndUnzip(url) {
             break;
         }
     }
-    if (!csvText) throw new Error("El archivo ZIP está completamente vacío.");
+    if (!csvText) throw new Error("El archivo ZIP está vacío.");
     return csvText;
 }
 
@@ -175,24 +188,28 @@ function loadCSVData() {
             }
 
             let tiendaNombre = (row[k_tienda] || "").trim();
-            let tipoTienda = (row[k_tipo] || "").toUpperCase().trim();
-            if(tiendaNombre.includes("AEC") || tiendaNombre.includes("DS")) tipoTienda = "MAYOREO";
-
-            let sugAEC = Math.round(parseFloat(row[k_sAEC]) || 0);
-            let sugDS = Math.round(parseFloat(row[k_sDS]) || 0);
             let necDet = Math.round(parseFloat(row[k_nDetAEC]) || 0);
             let necMay = Math.round(parseFloat(row[k_nMayAEC]) || 0);
             let necDS = Math.round(parseFloat(row[k_nDS]) || 0);
 
-            // Sumas Globales (Solo Necesidad Real)
+            // LOGICA MEJORADA DE MAYOREO: Por nombre O por necesidad mayoreo
+            let isMayoreo = tiendaNombre.toUpperCase().includes("MAYOREO") || 
+                            tiendaNombre.toUpperCase().includes("AEC") || 
+                            tiendaNombre.toUpperCase().includes("DS") || 
+                            necMay > 0;
+
+            let tipoTienda = isMayoreo ? "MAYOREO" : "DETALLE";
+
+            let sugAEC = Math.round(parseFloat(row[k_sAEC]) || 0);
+            let sugDS = Math.round(parseFloat(row[k_sDS]) || 0);
+
             dataMap[grp].n_aec += necDet;
             dataMap[grp].n_may += necMay;
             dataMap[grp].n_ds += necDS;
 
             let rowTotalNec = necDet + necMay + necDS;
-            let rowTotalSug = sugAEC + sugDS; // El sugerido se guarda aparte
+            let rowTotalSug = sugAEC + sugDS; 
             
-            // Mostrar la tienda si tiene Necesidad o si tiene Sugerido
             if ((rowTotalNec > 0 || rowTotalSug > 0) && tiendaNombre !== "") {
                 dataMap[grp].tiendas.push({ 
                     nombre: tiendaNombre, 
@@ -322,9 +339,6 @@ function renderDashboard(data) {
     mainTable.clear();
     let tS = 0, tN = 0; let k = { m1: 0, m2: 0, m3: 0, m4: 0, m5: 0 }; let divSum = {}; 
 
-    const gerencialMap = { 'Sano': { css: 'bg-verde', sort: 3 }, 'Comprar Urgente': { css: 'bg-rojo', sort: 1 }, 'En Tiempo': { css: 'bg-amarillo', sort: 2 }, 'Inmovilizado': { css: 'bg-morado', sort: 4 } };
-    const operativoMap = { 'Completado': { css: 'bg-verde', sort: 5 }, 'Quiebre': { css: 'bg-dark text-white', sort: 1, text: 'Quiebre (Saldo 0)' }, 'Residual': { css: 'bg-gris', sort: 6 }, 'Faltante': { css: 'bg-rojo', sort: 2 }, 'Prioridad Alta': { css: 'bg-rojo', sort: 3, text: '🔥 Prioridad Alta' }, 'Surtido Normal': { css: 'bg-amarillo', sort: 4 }, 'Fuera de Temporada': { css: 'bg-gris', sort: 7 } };
-
     data.forEach(row => {
         let s = row.s_aec + row.s_ds; let n = row.total_nec;
         tS += s; tN += n;
@@ -340,12 +354,33 @@ function renderDashboard(data) {
         if (currentView === 'gerencial') {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0); col7.sortValue = cob;
             col7.display = row.est_gerencial === 'Inmovilizado' ? `<b class="text-danger">${cob > 100 ? '> 100' : cob.toFixed(0)}%</b>` : (n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>'));
-            let m = gerencialMap[row.est_gerencial] || gerencialMap['Sano']; col8.display = label(row.est_gerencial, m.css); col8.sortValue = m.sort;
+            
+            // MAPA DE COLORES VIVOS GERENCIA
+            let cssColor = '';
+            if (row.est_gerencial === 'Sano') cssColor = 'bg-verde';
+            else if (row.est_gerencial === 'Comprar Urgente') cssColor = 'bg-rojo';
+            else if (row.est_gerencial === 'En Tiempo') cssColor = 'bg-amarillo';
+            else cssColor = 'bg-morado';
+
+            col8.display = label(row.est_gerencial, cssColor); 
+            col8.sortValue = row.est_gerencial === 'Comprar Urgente' ? 1 : 3;
+
             if (row.est_gerencial === 'Comprar Urgente') k.m1++; else if (row.est_gerencial === 'En Tiempo') k.m2++; else k.m3++;
         } else {
             let surtir = Math.min(s, n); let falta = n - s; col7.sortValue = surtir;
             col7.display = `<b class="fs-6 text-dark">📦 ${surtir.toLocaleString('en-US')}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta.toLocaleString('en-US')}</small>`:''}`;
-            let m = operativoMap[row.est_operativo] || operativoMap['Completado']; col8.display = label(m.text || row.est_operativo, m.css); col8.sortValue = m.sort;
+            
+            let cssColor = '';
+            let textDisplay = row.est_operativo;
+            if (row.est_operativo === 'Completado') cssColor = 'bg-verde';
+            else if (row.est_operativo === 'Quiebre') { cssColor = 'bg-dark text-white'; textDisplay = 'Quiebre (Saldo 0)'; }
+            else if (row.est_operativo === 'Residual' || row.est_operativo === 'Fuera de Temporada') cssColor = 'bg-gris';
+            else if (row.est_operativo === 'Faltante') cssColor = 'bg-rojo';
+            else if (row.est_operativo === 'Prioridad Alta') { cssColor = 'bg-rojo'; textDisplay = '🔥 Prioridad Alta'; }
+            else cssColor = 'bg-amarillo';
+
+            col8.display = label(textDisplay, cssColor); col8.sortValue = 1;
+
             if (row.est_operativo === 'Quiebre' || row.est_operativo === 'Faltante') k.m1++; else if (row.est_operativo === 'Prioridad Alta' || row.est_operativo === 'Surtido Normal') k.m2++; else if (row.est_operativo === 'Fuera de Temporada') k.m5++; else k.m4++;
         }
 
@@ -361,11 +396,25 @@ function updateUI(s, n, k, divSum) {
     } else { $('#lblCritico').text('Quiebre / Faltante'); $('#kpiCriticos').text(k.m1); $('#lblAjustado').text('Por Surtir'); $('#kpiAjustados').text(k.m2).attr('class', 'text-warning mb-0 fs-2 fw-bold'); $('#lblOptimo').text('Residual / Completado'); $('#kpiOptimos').text(k.m4 + k.m5); }
 
     let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
+    
+    // Gráfico de barras LIMPIO (Sin fondo ni eje Y)
     if(necessityChart) necessityChart.destroy();
-    necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), { type: 'bar', data: { labels: sorted.map(i => i[0]), datasets: [{ label: 'Necesidad', data: sorted.map(i => i[1]), backgroundColor: 'rgba(225, 37, 27, 0.85)', borderColor: '#E1251B', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { datalabels: { anchor: 'end', align: 'top', formatter: (v) => Math.round(v).toLocaleString('en-US'), font: { weight: 'bold', size: 10 }, color: '#E1251B' }, legend: { display: false } }, scales: { x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } } } } });
+    necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), { 
+        type: 'bar', 
+        data: { labels: sorted.map(i => i[0]), datasets: [{ label: 'Necesidad', data: sorted.map(i => i[1]), backgroundColor: 'rgba(225, 37, 27, 0.85)', borderColor: '#E1251B', borderWidth: 1 }] }, 
+        options: { 
+            responsive: true, maintainAspectRatio: false, 
+            plugins: { datalabels: { anchor: 'end', align: 'top', formatter: (v) => Math.round(v).toLocaleString('en-US'), font: { weight: 'bold', size: 10 }, color: '#E1251B' }, legend: { display: false } }, 
+            scales: { 
+                x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } },
+                y: { display: false, grid: { display: false } } 
+            } 
+        } 
+    });
 
+    // Colores Vivos para Gerencia
     let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Inactivos'];
-    let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#212529', '#ffc107', '#e9ecef'];
+    let colorsPie = currentView === 'gerencial' ? ['#dc3545', '#ffc107', '#198754'] : ['#212529', '#ffc107', '#e9ecef'];
     if(statusChart) statusChart.destroy();
     statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), { type: 'doughnut', data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4+k.m5], backgroundColor: colorsPie, borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }, datalabels: { formatter: (value, ctx) => { let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return value > 0 ? (value * 100 / sum).toFixed(1) + "%" : ''; }, color: '#444', font: { weight: 'bold' } } } } });
 }
@@ -408,7 +457,6 @@ function openDrillDown(g) {
         }
 
         let nombreDisplay = t.nombre.toUpperCase().includes('DS') ? `<b class="text-danger">${t.nombre}</b>` : `<b>${t.nombre}</b>`;
-        
         let col_req = { display: `<b class="text-danger fs-6">${t.necesidad.toLocaleString('en-US')}</b>`, sortValue: t.necesidad };
         
         tiendasTable.row.add([ `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, t.sugerido, t.saldo_t, col_req, badge ]);
