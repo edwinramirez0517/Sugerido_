@@ -72,12 +72,16 @@ $(document).ready(function() {
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
 
+    // CORRECCIÓN: Se actualizó para que la columna 2 acepte HTML y se pinte de rojo
     tiendasTable = $('#tiendasTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, pageLength: 10, lengthChange: false,
-        columnDefs: [{ className: "text-center align-middle", targets: "_all" }, { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') }]
+        columnDefs: [
+            { className: "text-center align-middle", targets: "_all" }, 
+            { targets: [1], render: $.fn.dataTable.render.number(',', '.', 0, '') },
+            { targets: [2], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } }
+        ]
     });
 
-    // Se actualizó columnDefs para que acepte formato HTML en Fecha DS y Saldo DS sin perder el orden numérico
     skuTable = $('#skuTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, pageLength: 10, lengthChange: false,
         columnDefs: [
@@ -316,7 +320,7 @@ function renderDashboard(data) {
 
         let col7 = { display: '', sortValue: 0 }; let col8 = { display: '', sortValue: 0 };
         
-        // Columna DS siempre en rojo si tiene necesidad
+        // DS en Rojo para destacarlo
         let dsCol = { 
             display: row.n_ds > 0 ? `<span class="text-danger fw-bold">${row.n_ds.toLocaleString('en-US')}</span>` : '<span class="text-danger">0</span>', 
             sortValue: row.n_ds 
@@ -361,7 +365,6 @@ function openDrillDown(g) {
     $('#mainScreen').addClass('hidden-screen'); $('#drillDownScreen').removeClass('hidden-screen');
     $('#detailDivCat').text(`${g.div} > ${g.cat}`); $('#detailGroupName').text(g.grp);
 
-    // TARJETAS DE KPIS DEL DETALLE
     let nT = g.total_nec; 
     let sT = g.s_aec + g.s_ds; 
     let fT = nT - sT > 0 ? nT - sT : 0;
@@ -382,16 +385,18 @@ function openDrillDown(g) {
         $('#detEstadoBadge').html(label(g.est_operativo, mColor));
     }
 
-    // TABLA DE TIENDAS (Nombre de tiendas con "DS" en rojo)
     tiendasTable.clear();
     g.tiendas.forEach(t => {
         let badge = t.necesidad > t.saldo_t ? label('Urgente', 'bg-rojo') : label('Surtir', 'bg-amarillo');
         let nombreDisplay = t.nombre.toUpperCase().includes('DS') ? `<b class="text-danger">${t.nombre}</b>` : `<b>${t.nombre}</b>`;
-        tiendasTable.row.add([ `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, t.saldo_t, `<b class="text-danger fs-6">${t.necesidad}</b>`, badge ]);
+        
+        // CORRECCIÓN: La columna de requerimiento ya admite formato de objeto sin arrojar error visual
+        let col_req = { display: `<b class="text-danger fs-6">${t.necesidad.toLocaleString('en-US')}</b>`, sortValue: t.necesidad };
+        
+        tiendasTable.row.add([ `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, t.saldo_t, col_req, badge ]);
     });
     tiendasTable.draw();
 
-    // TABLA DE SKUS (Fechas y Saldos DS en rojo)
     skuTable.clear();
     g.skus.filter(s => s.total > 0).forEach(s => { 
         let col_f_ds = { display: `<span class="text-danger fw-bold">${s.f_ds || ''}</span>`, sortValue: s.f_ds || '' };
@@ -408,3 +413,4 @@ function closeDrillDown() { $('#drillDownScreen').addClass('hidden-screen'); $('
 // ==========================================
 // FIN DEL CÓDIGO
 // ==========================================
+p
