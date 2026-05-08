@@ -19,7 +19,7 @@ const reglasLogisticas = {
 };
 
 // ==========================================
-// FUNCIONES DE FECHAS Y TEXTO
+// FUNCIONES AUXILIARES
 // ==========================================
 function excelToDate(excelDate) {
     if (!excelDate) return null;
@@ -47,9 +47,6 @@ function label(text, className) {
     return `<span class="status-pill ${className}">${text}</span>`;
 }
 
-// ==========================================
-// EVALUAR TEMPORADAS
-// ==========================================
 function checkSeason(div, cat, grp) {
     let text = `${div} ${cat} ${grp}`.toUpperCase();
     if (text.includes("ESCOLAR") || text.includes("MOCHILA") || text.includes("CUADERNO")) return [12, 1, 2].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
@@ -63,7 +60,44 @@ function checkSeason(div, cat, grp) {
 }
 
 // ==========================================
-// INICIALIZACIÓN DE TABLAS (AHORA CON BOTONES DE IMPRIMIR Y EXCEL)
+// CONFIGURACIÓN DE DISEÑO DE IMPRESIÓN
+// ==========================================
+const printConfig = (titleText) => ({
+    extend: 'print',
+    text: '<i class="fa-solid fa-print me-1"></i> Imprimir',
+    className: 'btn btn-outline-primary btn-sm shadow-sm me-2',
+    title: '', 
+    customize: function (win) {
+        $(win.document.body)
+            .css('font-family', '"Segoe UI", sans-serif')
+            .css('font-size', '10px') 
+            .css('background', '#fff');
+
+        $(win.document.body).prepend(
+            '<div style="text-align:center; margin-bottom:15px; padding-bottom: 10px; border-bottom: 2px solid #E1251B;">' +
+            '<h2 style="color:#012094; margin:0; font-weight:900;">El Compadre</h2>' +
+            '<h4 style="color:#E1251B; margin:0; text-transform:uppercase;">' + titleText + '</h4>' +
+            '<p style="margin:0; font-size:11px; color:#555;">Generado: ' + formatearFecha(TODAY) + '</p>' +
+            '</div>'
+        );
+
+        let table = $(win.document.body).find('table');
+        table.removeClass('table-bordered').addClass('table-sm');
+        table.css('width', '100%').css('border-collapse', 'collapse').css('margin-bottom', '20px');
+        table.find('th, td').css('border', '1px solid #ddd').css('padding', '6px');
+        table.find('th').css('background-color', '#012094').css('color', 'white').css('text-align', 'center');
+        table.find('.status-pill').css('border-radius', '4px').css('padding', '2px 5px');
+    }
+});
+
+const excelConfig = {
+    extend: 'excelHtml5',
+    text: '<i class="fa-solid fa-file-excel me-1"></i> Excel',
+    className: 'btn btn-outline-success btn-sm shadow-sm'
+};
+
+// ==========================================
+// INICIALIZACIÓN DE TABLAS
 // ==========================================
 $(document).ready(function() {
     
@@ -74,10 +108,7 @@ $(document).ready(function() {
         pageLength: 25, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
         dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
-        buttons: [
-            { extend: 'print', text: '<i class="fa-solid fa-print me-1"></i> Imprimir', className: 'btn btn-outline-primary btn-sm shadow-sm me-2' },
-            { extend: 'excelHtml5', text: '<i class="fa-solid fa-file-excel me-1"></i> Excel', className: 'btn btn-outline-success btn-sm shadow-sm' }
-        ],
+        buttons: [ printConfig('Matriz General de Abastecimiento'), excelConfig ],
         columnDefs: [ { className: "text-center align-middle", targets: "_all" }, { targets: [2, 3, 4, 6], render: $.fn.dataTable.render.number(',', '.', 0, '') }, { targets: [5, 7, 8], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } } ],
         createdRow: function(row) { $(row).addClass('clickable-row'); }
     });
@@ -87,13 +118,13 @@ $(document).ready(function() {
         pageLength: 25, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
         dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
-        buttons: [ { extend: 'print', text: '<i class="fa-solid fa-print me-1"></i>', className: 'btn btn-outline-primary btn-sm' } ],
+        buttons: [ printConfig('Detalle Operativo por Tienda') ],
         order: [], 
         columnDefs: [
             { className: "text-center align-middle", targets: [0,1,2,3,4] }, 
             { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') },
             { targets: [3], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } },
-            { targets: [5], visible: false } // Columna Oculta para el filtro anti-errores
+            { targets: [5], visible: false } // Columna Oculta para el filtro de botones
         ]
     });
 
@@ -102,7 +133,7 @@ $(document).ready(function() {
         pageLength: 25, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
         dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"lBf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
-        buttons: [ { extend: 'print', text: '<i class="fa-solid fa-print me-1"></i>', className: 'btn btn-outline-primary btn-sm' } ],
+        buttons: [ printConfig('Inventario de SKUs en Bodega') ],
         order: [], 
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
@@ -145,7 +176,6 @@ function filterTiendas(type) {
     if (type === 'ALL') {
         tiendasTable.column(5).search('').draw();
     } else {
-        // Usa Regex para buscar la palabra exacta en la columna oculta
         tiendasTable.column(5).search('^' + type + '$', true, false).draw();
     }
 }
@@ -224,13 +254,13 @@ function loadCSVData() {
             let sugAEC = Math.round(parseFloat(row[k_sAEC]) || 0);
             let sugDS = Math.round(parseFloat(row[k_sDS]) || 0);
 
-            // CLASIFICACIÓN DE TIENDAS EXACTA
+            // CLASIFICACIÓN DE TIENDAS CORREGIDA PARA "VITR"
             let categoryFilter = "AEC_DETALLE";
             let tipoTienda = "DETALLE";
 
-            if (upperName.includes("DS") || upperName.includes("VITRINA") || upperName.includes("DANILO")) {
+            if (upperName.includes("DS") || upperName.includes("VITR") || upperName.includes("DANILO")) {
                 categoryFilter = "DS";
-                tipoTienda = "MAYOREO"; // Para el gerente cuenta como mayoreo
+                tipoTienda = "MAYOREO"; 
             } else if (upperName.includes("MAYOREO") || necMay > 0) {
                 categoryFilter = "MAYOREO";
                 tipoTienda = "MAYOREO";
@@ -246,12 +276,11 @@ function loadCSVData() {
             let rowTotalNec = necDet + necMay + necDS;
             let rowTotalSug = sugAEC + sugDS; 
             
-            // SE QUITÓ LA CONDICIÓN PARA QUE APAREZCAN LAS 27 TIENDAS SIEMPRE
             if (tiendaNombre !== "") {
                 dataMap[grp].tiendas.push({ 
                     nombre: tiendaNombre, 
                     tipo: tipoTienda, 
-                    categoria_filtro: categoryFilter, // Para el filtro anti-errores
+                    categoria_filtro: categoryFilter,
                     sugerido: rowTotalSug, 
                     saldo_t: Math.round(parseFloat(row[k_saldoT]) || 0), 
                     necesidad: rowTotalNec 
@@ -484,7 +513,7 @@ function openDrillDown(g) {
     $('#detailDivCat').text(`${g.div} > ${g.cat}`); $('#detailGroupName').text(g.grp);
 
     $('#fT_all').prop('checked', true);
-    tiendasTable.column(5).search(''); // Limpia el filtro invisible
+    tiendasTable.column(5).search(''); 
 
     let nT = g.total_nec; 
     let sT = g.s_aec + g.s_ds; 
@@ -519,14 +548,14 @@ function openDrillDown(g) {
             badge = label('Ok', 'bg-verde');
         }
 
-        let isDS = t.nombre.toUpperCase().includes('DS') || t.nombre.toUpperCase().includes('VITRINA') || t.nombre.toUpperCase().includes('DANILO');
+        let isDS = t.nombre.toUpperCase().includes('DS') || t.nombre.toUpperCase().includes('VITR') || t.nombre.toUpperCase().includes('DANILO');
         let nombreDisplay = isDS ? `<b class="text-danger">${t.nombre}</b>` : `<b>${t.nombre}</b>`;
         let col_req = { display: `<b class="text-danger fs-6">${t.necesidad.toLocaleString('en-US')}</b>`, sortValue: t.necesidad };
         
         tiendasTable.row.add([ 
             `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, 
             t.sugerido, t.saldo_t, col_req, badge, 
-            t.categoria_filtro // Índice 5 (Oculto)
+            t.categoria_filtro 
         ]);
     });
     tiendasTable.draw();
