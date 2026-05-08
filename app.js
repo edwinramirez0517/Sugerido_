@@ -77,9 +77,14 @@ $(document).ready(function() {
         columnDefs: [{ className: "text-center align-middle", targets: "_all" }, { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') }]
     });
 
+    // Se actualizó columnDefs para que acepte formato HTML en Fecha DS y Saldo DS sin perder el orden numérico
     skuTable = $('#skuTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, pageLength: 10, lengthChange: false,
-        columnDefs: [{ className: "text-center align-middle", targets: "_all" }, { targets: [4, 6, 7], render: $.fn.dataTable.render.number(',', '.', 0, '') }]
+        columnDefs: [
+            { className: "text-center align-middle", targets: "_all" }, 
+            { targets: [4], render: $.fn.dataTable.render.number(',', '.', 0, '') },
+            { targets: [5, 6, 7], render: function (data, type, row) { return (type === 'sort' || type === 'type') ? data.sortValue : data.display; } }
+        ]
     });
 
     $('#f_div, #f_cat, #f_grp, #f_age, #f_status').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Todos" });
@@ -133,7 +138,6 @@ function loadCSVData() {
 
         let dataMap = {};
 
-        // MOTOR BÚSQUEDA COLUMNAS ESTRICTO (Corrige el desfase de columnas)
         let headersSug = Object.keys(sugeridoRaw[0]);
         const getCol = (headers, exactName, fallback) => {
             let match = headers.find(h => h.trim().toLowerCase() === exactName.toLowerCase());
@@ -312,9 +316,9 @@ function renderDashboard(data) {
 
         let col7 = { display: '', sortValue: 0 }; let col8 = { display: '', sortValue: 0 };
         
-        // DS en Rojo para destacarlo
+        // Columna DS siempre en rojo si tiene necesidad
         let dsCol = { 
-            display: row.n_ds > 0 ? `<span class="text-danger fw-bold">${row.n_ds.toLocaleString('en-US')}</span>` : '0', 
+            display: row.n_ds > 0 ? `<span class="text-danger fw-bold">${row.n_ds.toLocaleString('en-US')}</span>` : '<span class="text-danger">0</span>', 
             sortValue: row.n_ds 
         };
 
@@ -378,17 +382,24 @@ function openDrillDown(g) {
         $('#detEstadoBadge').html(label(g.est_operativo, mColor));
     }
 
-    // TABLA DE TIENDAS
+    // TABLA DE TIENDAS (Nombre de tiendas con "DS" en rojo)
     tiendasTable.clear();
     g.tiendas.forEach(t => {
         let badge = t.necesidad > t.saldo_t ? label('Urgente', 'bg-rojo') : label('Surtir', 'bg-amarillo');
-        tiendasTable.row.add([ `<b>${t.nombre}</b><br><small class="text-muted">${t.tipo}</small>`, t.saldo_t, `<b class="text-danger fs-6">${t.necesidad}</b>`, badge ]);
+        let nombreDisplay = t.nombre.toUpperCase().includes('DS') ? `<b class="text-danger">${t.nombre}</b>` : `<b>${t.nombre}</b>`;
+        tiendasTable.row.add([ `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, t.saldo_t, `<b class="text-danger fs-6">${t.necesidad}</b>`, badge ]);
     });
     tiendasTable.draw();
 
-    // TABLA DE SKUS
+    // TABLA DE SKUS (Fechas y Saldos DS en rojo)
     skuTable.clear();
-    g.skus.filter(s => s.total > 0).forEach(s => { skuTable.row.add([ `<span class="fw-bold text-primary">${s.cod}</span>`, `<small>${s.desc}</small>`, s.marca || '', s.f_ec || '', s.s_aec, s.f_ds || '', s.s_ds, `<b class="fs-6">${s.total.toLocaleString('en-US')}</b>` ]); });
+    g.skus.filter(s => s.total > 0).forEach(s => { 
+        let col_f_ds = { display: `<span class="text-danger fw-bold">${s.f_ds || ''}</span>`, sortValue: s.f_ds || '' };
+        let col_s_ds = { display: `<b class="text-danger fs-6">${s.s_ds.toLocaleString('en-US')}</b>`, sortValue: s.s_ds };
+        let col_tot = { display: `<b class="fs-6 text-dark">${s.total.toLocaleString('en-US')}</b>`, sortValue: s.total };
+        
+        skuTable.row.add([ `<span class="fw-bold text-primary">${s.cod}</span>`, `<small>${s.desc}</small>`, s.marca || '', s.f_ec || '', s.s_aec, col_f_ds, col_s_ds, col_tot ]); 
+    });
     skuTable.draw();
 }
 
