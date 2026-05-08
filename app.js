@@ -1,5 +1,5 @@
 // ==========================================
-// CONFIGURACIÓN INICIAL
+// INICIO DEL CÓDIGO
 // ==========================================
 Chart.register(ChartDataLabels);
 
@@ -47,7 +47,7 @@ function label(text, className) {
 }
 
 // ==========================================
-// EVALUAR TEMPORADAS
+// EVALUAR TEMPORADAS 
 // ==========================================
 function checkSeason(div, cat, grp) {
     let text = `${div} ${cat} ${grp}`.toUpperCase();
@@ -112,20 +112,18 @@ async function fetchAndUnzip(url) {
     
     let csvText = null;
     
-    // Recorremos todo el contenido del ZIP de forma segura
-    for (let relativePath in zip.files) {
-        let zipEntry = zip.files[relativePath];
-        // Si no es una carpeta y termina en .csv, lo extraemos
-        if (!zipEntry.dir && relativePath.toLowerCase().endsWith('.csv')) {
-            csvText = await zipEntry.async("string");
+    // Abrimos el primer archivo real que encuentre (ignorando carpetas)
+    for (let filename of Object.keys(zip.files)) {
+        let fileObj = zip.files[filename];
+        if (!fileObj.dir) {
+            csvText = await fileObj.async("string");
             break;
         }
     }
     
     if (!csvText) {
-        throw new Error("No se encontró ningún archivo CSV dentro del ZIP.");
+        throw new Error("El archivo ZIP está completamente vacío.");
     }
-    
     return csvText;
 }
 
@@ -343,4 +341,29 @@ function updateUI(s, n, k, divSum) {
     let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Inactivos'];
     let colorsPie = currentView === 'gerencial' ? ['#f8d7da', '#fff3cd', '#d1e7dd'] : ['#212529', '#ffc107', '#e9ecef'];
     if(statusChart) statusChart.destroy();
-    statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), { type: 'doughnut', data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4+k.m5], backgroundColor: colorsPie, borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { b
+    statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), { type: 'doughnut', data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4+k.m5], backgroundColor: colorsPie, borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }, datalabels: { formatter: (value, ctx) => { let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return value > 0 ? (value * 100 / sum).toFixed(1) + "%" : ''; }, color: '#444', font: { weight: 'bold' } } } } });
+}
+
+function switchView(v) { currentView = v; $('.view-btn').removeClass('active'); $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active'); updateStatusFilterOptions(); applyFilters(); }
+
+function openDrillDown(g) {
+    $('#mainScreen').addClass('hidden-screen'); $('#drillDownScreen').removeClass('hidden-screen');
+    $('#detailDivCat').text(`${g.div} > ${g.cat}`); $('#detailGroupName').text(g.grp);
+
+    tiendasTable.clear();
+    g.tiendas.forEach(t => {
+        let badge = t.necesidad > t.saldo_t ? label('Urgente', 'bg-rojo') : label('Surtir', 'bg-amarillo');
+        tiendasTable.row.add([ `<b>${t.nombre}</b><br><small class="text-muted">${t.tipo}</small>`, t.saldo_t, `<b class="text-danger fs-6">${t.necesidad}</b>`, badge ]);
+    });
+    tiendasTable.draw();
+
+    skuTable.clear();
+    g.skus.filter(s => s.total > 0).forEach(s => { skuTable.row.add([ `<span class="fw-bold text-primary">${s.cod}</span>`, `<small>${s.desc}</small>`, s.marca || '', s.f_ec || '', s.s_aec, s.f_ds || '', s.s_ds, `<b class="fs-6">${s.total.toLocaleString('en-US')}</b>` ]); });
+    skuTable.draw();
+}
+
+function closeDrillDown() { $('#drillDownScreen').addClass('hidden-screen'); $('#mainScreen').removeClass('hidden-screen'); }
+
+// ==========================================
+// FIN DEL CÓDIGO
+// ==========================================
