@@ -1,5 +1,5 @@
 // ==========================================
-// CONFIGURACIÓN INICIAL Y REGLAS ORIGINALES
+// CONFIGURACIÓN INICIAL
 // ==========================================
 Chart.register(ChartDataLabels);
 
@@ -22,7 +22,7 @@ const reglasLogisticas = {
 };
 
 // ==========================================
-// FUNCIONES AUXILIARES (FECHAS Y HTML)
+// FUNCIONES DE FECHAS
 // ==========================================
 function excelToDate(excelDate) {
     if (!excelDate) return null;
@@ -51,33 +51,27 @@ function label(text, className) {
 }
 
 // ==========================================
-// EVALUAR TEMPORADAS (TUS REGLAS HONDURAS)
+// EVALUAR TEMPORADAS (REPARADO DIA DE LA MADRE)
 // ==========================================
 function checkSeason(div, cat, grp) {
     let text = `${div} ${cat} ${grp}`.toUpperCase();
-    if (text.includes("ESCOLAR") || text.includes("MOCHILA") || text.includes("CUADERNO")) {
-        return [12, 1, 2].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
-    }
-    if (text.includes("VALENTIN") || text.includes("AMOR")) {
-        return [1, 2].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
-    }
-    if (text.includes("VERANO") || text.includes("PLAYA") || text.includes("PISCINA") || text.includes("TRAJE DE BAÑO")) {
-        return [3, 4].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
-    }
-    if ((text.includes("MAMA") || text.includes("MADRE")) && [4, 5].includes(CURRENT_MONTH)) return "ALTA";
+    if (text.includes("ESCOLAR") || text.includes("MOCHILA") || text.includes("CUADERNO")) return [12, 1, 2].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
+    if (text.includes("VALENTIN") || text.includes("AMOR")) return [1, 2].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
+    if (text.includes("VERANO") || text.includes("PLAYA") || text.includes("PISCINA") || text.includes("TRAJE DE BAÑO")) return [3, 4].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
+    
+    // DIA DE LA MADRE: Validamos MAMA, MADRE y también DAMA o BELLEZA para que jale todo lo de mujer en Abril y Mayo
+    if ((text.includes("MAMA") || text.includes("MADRE") || text.includes("DAMA") || text.includes("BELLEZA")) && [4, 5].includes(CURRENT_MONTH)) return "ALTA";
+    
     if (["HOGAR", "TECNOLOGIA", "PASEO"].includes(div.toUpperCase()) && [6, 7].includes(CURRENT_MONTH)) return "ALTA";
     if ((text.includes("NIÑO") || text.includes("JUGUET")) && [8, 9].includes(CURRENT_MONTH)) return "ALTA";
-    if (text.includes("NAVIDAD") || text.includes("PASCUA") || text.includes("LUCES")) {
-        return [9, 10, 11, 12].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
-    }
+    if (text.includes("NAVIDAD") || text.includes("PASCUA") || text.includes("LUCES")) return [9, 10, 11, 12].includes(CURRENT_MONTH) ? "ALTA" : "FUERA";
     return "NORMAL"; 
 }
 
 // ==========================================
-// INICIALIZACIÓN DATATABLES Y EVENTOS
+// INICIALIZACIÓN TABLAS
 // ==========================================
 $(document).ready(function() {
-    
     mainTable = $('#mainTable').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
         pageLength: 10,
@@ -92,24 +86,19 @@ $(document).ready(function() {
 
     tiendasTable = $('#tiendasTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
-        pageLength: 10,
-        lengthChange: false,
-        columnDefs: [
-            { className: "text-center align-middle", targets: "_all" },
-            { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') }
-        ]
+        pageLength: 10, lengthChange: false,
+        columnDefs: [{ className: "text-center align-middle", targets: "_all" }, { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') }]
     });
 
     skuTable = $('#skuTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
-        pageLength: 10,
-        columnDefs: [
-            { className: "text-center align-middle", targets: "_all" },
-            { targets: [4, 6, 7], render: $.fn.dataTable.render.number(',', '.', 0, '') }
-        ]
+        pageLength: 10, lengthChange: false,
+        columnDefs: [{ className: "text-center align-middle", targets: "_all" }, { targets: [4, 6, 7], render: $.fn.dataTable.render.number(',', '.', 0, '') }]
     });
 
     $('#f_div, #f_cat, #f_grp, #f_age, #f_status').select2({ theme: 'bootstrap-5', width: '100%', placeholder: "Todos" });
+    
+    // Iniciar carga de datos
     loadCSVData();
 
     $('#f_div').on('select2:select select2:unselect', function() { updateSubFilters('div'); applyFilters(); });
@@ -118,24 +107,32 @@ $(document).ready(function() {
 
     $('#resetFilters').on('click', function() {
         $('#f_div, #f_cat, #f_grp, #f_age, #f_status').val(null).trigger('change.select2');
-        updateSubFilters('div'); 
-        applyFilters(); 
+        updateSubFilters('div'); applyFilters(); 
     });
 
+    // Clic en fila corregido para evitar errores
     $('#mainTable tbody').on('click', 'tr', function () {
         let rowData = mainTable.row(this).data();
         if (!rowData) return;
-        let groupName = rowData[0].split('<br>')[0].replace(/<b>|<\/b>/g, "").trim();
-        let groupData = dataBase.find(d => d.grp === groupName);
-        if (groupData) openDrillDown(groupData);
+        
+        let htmlString = rowData[0];
+        let rawGrp = htmlString.substring(0, htmlString.indexOf('<br>')).replace(/<[^>]*>?/gm, '').trim();
+        
+        let groupData = dataBase.find(d => d.grp === rawGrp);
+        if (groupData) {
+            openDrillDown(groupData);
+        } else {
+            alert("No se encontró el detalle de este grupo.");
+        }
     });
 });
 
 // ==========================================
-// LECTURA ZIP/CSV Y SANITIZACIÓN
+// EXTRACCIÓN ZIP Y PROCESAMIENTO
 // ==========================================
 async function fetchAndUnzip(url, filenameInsideZip) {
     const response = await fetch(url);
+    if (!response.ok) throw new Error("No se encontró el archivo " + url);
     const blob = await response.blob();
     const zip = await JSZip.loadAsync(blob);
     return await zip.file(filenameInsideZip).async("string");
@@ -144,55 +141,57 @@ async function fetchAndUnzip(url, filenameInsideZip) {
 function loadCSVData() {
     Promise.all([
         fetchAndUnzip('sugerido_v2.zip', 'sugerido_v2.csv'),
-        fetch('saldo_2.csv').then(res => res.text())
+        fetch('saldo_2.csv').then(res => {
+            if(!res.ok) throw new Error("No se encontró saldo_2.csv"); 
+            return res.text(); 
+        })
     ]).then(([sugeridoText, saldoText]) => {
         let sugeridoRaw = Papa.parse(sugeridoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
         let saldoRaw = Papa.parse(saldoText, { header: true, skipEmptyLines: true, delimiter: ";" }).data;
         
         let dataMap = {};
 
-        // 1. Agrupar la Necesidad por Tiendas (AEC/DS = MAYOREO)
+        // 1. PROCESAR NECESIDADES DE TIENDA Y GLOBAL UNIFICADO
         sugeridoRaw.forEach(row => {
             let grp = (row["Grupo"] || "").trim();
-            if(!grp) return;
+            if(!grp || grp === "SIN GRP") return;
 
             if(!dataMap[grp]) {
                 dataMap[grp] = {
-                    div: (row["Division"] || "").trim(), cat: (row["Categoria"] || "").trim(), 
-                    grp_id: (row["Grupo ID"] || "").trim(), grp: grp,
-                    s_aec: 0, s_ds: 0, n_aec: 0, n_may: 0, n_ds: 0, max_age: -1, 
-                    tiendas: [], skus: []
+                    div: (row["Division"] || "").trim(), cat: (row["Categoria"] || "").trim(), grp_id: (row["Grupo ID"] || "").trim(), grp: grp,
+                    s_aec: 0, s_ds: 0, n_aec: 0, n_may: 0, n_ds: 0, total_nec: 0, max_age: -1, tiendas: [], skus: []
                 };
             }
 
-            let tiendaNombre = row["Nombre Tienda"] || "";
-            let tipoTienda = (row["Tipo de Tienda"] || "").toUpperCase();
-            
-            // REGLA: Forzar AEC y DS a MAYOREO
-            if(tiendaNombre.includes("AEC") || tiendaNombre.includes("DS")) {
-                tipoTienda = "MAYOREO";
-            }
+            let tiendaNombre = (row["Nombre Tienda"] || "").trim();
+            let tipoTienda = (row["Tipo de Tienda"] || "").toUpperCase().trim();
+            if(tiendaNombre.includes("AEC") || tiendaNombre.includes("DS")) tipoTienda = "MAYOREO";
 
+            // Aquí estaba el error en la versión anterior. Debemos capturar TODA la necesidad de la fila.
+            let sugAEC = Math.round(parseFloat(row["Sugerido AEC"]) || 0);
+            let sugDS = Math.round(parseFloat(row["Sugerido DS"]) || 0);
             let necDet = Math.round(parseFloat(row["Necesidad detalle AEC"]) || 0);
             let necMay = Math.round(parseFloat(row["Necesidad mayoreo AEC"]) || 0);
             let necDS = Math.round(parseFloat(row["Necesidad DS"]) || 0);
-            let necTotalFila = necDet + necMay + necDS;
 
-            dataMap[grp].n_aec += necDet;
+            // Sumamos a los totales globales de gerencia
+            dataMap[grp].n_aec += (sugAEC + necDet);
             dataMap[grp].n_may += necMay;
-            dataMap[grp].n_ds += necDS;
+            dataMap[grp].n_ds += (sugDS + necDS);
 
-            if (necTotalFila > 0) {
+            // Total de esa tienda específica
+            let rowTotalNec = sugAEC + sugDS + necDet + necMay + necDS;
+
+            if (rowTotalNec > 0 && tiendaNombre !== "") {
                 dataMap[grp].tiendas.push({
-                    nombre: tiendaNombre,
-                    tipo: tipoTienda,
+                    nombre: tiendaNombre, tipo: tipoTienda,
                     saldo_t: Math.round(parseFloat(row["Saldo Tienda"]) || 0),
-                    necesidad: necTotalFila
+                    necesidad: rowTotalNec
                 });
             }
         });
 
-        // 2. Agrupar los SKUs de Bodega (Calculando antigüedad original)
+        // 2. PROCESAR SALDOS DE BODEGA Y ANTIGÜEDAD
         saldoRaw.forEach(row => {
             let grp = (row["Grupo"] || "").trim();
             if(dataMap[grp]) {
@@ -207,11 +206,8 @@ function loadCSVData() {
                 dataMap[grp].s_ds += sDS;
 
                 dataMap[grp].skus.push({ 
-                    cod: (row["Producto"] || "").trim(), 
-                    marca: (row["Marca"] || "").trim(), 
-                    desc: (row["ProdNombre"] || "").trim(), 
-                    s_aec: sAEC, s_ds: sDS, total: sAEC + sDS,
-                    f_ec: formatearFecha(dEC), f_ds: formatearFecha(dDS), age: age
+                    cod: (row["Producto"] || "").trim(), marca: (row["Marca"] || "").trim(), desc: (row["ProdNombre"] || "").trim(), 
+                    s_aec: sAEC, s_ds: sDS, total: sAEC + sDS, f_ec: formatearFecha(dEC), f_ds: formatearFecha(dDS), age: age
                 });
 
                 if(age > dataMap[grp].max_age) dataMap[grp].max_age = age;
@@ -220,12 +216,14 @@ function loadCSVData() {
 
         dataBase = Object.values(dataMap);
         
-        // 3. Aplicar tus Estados Gerenciales/Operativos originales
+        // 3. APLICAR REGLAS Y ESTADOS (AHORA CON NÚMEROS REALES)
         dataBase.forEach(row => { 
             row.age_cat = getAgeCategory(row.max_age); 
             
             let s = row.s_aec + row.s_ds;
             let n = row.n_aec + row.n_may + row.n_ds;
+            row.total_nec = n; // Guardamos explícito
+
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
             let season = checkSeason(row.div, row.cat, row.grp);
             let r = reglasLogisticas[row.div] || reglasLogisticas["DEFAULT"];
@@ -245,13 +243,30 @@ function loadCSVData() {
             else row.est_operativo = 'Surtido Normal';
         });
 
-        initFilters();
-        applyFilters(); 
-    }).catch(error => { console.error("Error CSV/ZIP:", error); });
+        // 4. QUITAR PANTALLA DE CARGA Y MOSTRAR DASHBOARD
+        $('#loadingOverlay').fadeOut(500, function() {
+            $('#mainScreen').removeClass('hidden-screen');
+            initFilters();
+            applyFilters(); 
+        });
+
+    }).catch(error => { 
+        console.error("Error CSV/ZIP:", error); 
+        $('#loadingOverlay .spinner-border').hide();
+        $('#loadingText').text("⚠️ Error de Conexión o Archivos");
+        $('#errorBox').removeClass('d-none').html(`
+            <b>Fallo al procesar los datos logísticos.</b><br>
+            Asegúrate de que los archivos estén en Github correctamente:<br>
+            1. <code>sugerido_v2.zip</code> (Que dentro tenga el CSV).<br>
+            2. <code>saldo_2.csv</code>.<br>
+            <hr>
+            <small>Detalle Técnico: ${error.message}</small>
+        `);
+    });
 }
 
 // ==========================================
-// FILTROS EN CASCADA ORIGINALES
+// FILTROS EN CASCADA
 // ==========================================
 function rebuildSelect(id, options, selectedArr) {
     let $el = $(id);
@@ -264,6 +279,7 @@ function rebuildSelect(id, options, selectedArr) {
 }
 
 function initFilters() {
+    if(dataBase.length === 0) return;
     let divs = [...new Set(dataBase.map(i => i.div))].sort();
     let ages = [...new Set(dataBase.map(i => i.age_cat))].sort();
     rebuildSelect('#f_div', divs, []);
@@ -286,7 +302,6 @@ function updateSubFilters(triggeredBy) {
         if (selCat.length) d = d.filter(r => selCat.includes(r.cat));
         let grps = [...new Set(d.map(i => i.grp))].sort();
         rebuildSelect('#f_grp', grps, $('#f_grp').val());
-        
     } else if (triggeredBy === 'cat') {
         if (selDiv.length) d = d.filter(r => selDiv.includes(r.div));
         if (selCat.length) d = d.filter(r => selCat.includes(r.cat));
@@ -317,7 +332,7 @@ function applyFilters() {
 }
 
 // ==========================================
-// RENDERIZADO TABLA MAESTRA Y GRÁFICOS
+// RENDERIZADO TABLA MAESTRA Y GRÁFICOS (RESTAURADO)
 // ==========================================
 function renderDashboard(data) {
     mainTable.clear();
@@ -338,8 +353,9 @@ function renderDashboard(data) {
 
     data.forEach(row => {
         let s = row.s_aec + row.s_ds;
-        let n = row.n_aec + row.n_may + row.n_ds;
+        let n = row.total_nec;
         tS += s; tN += n;
+        
         if(!divSum[row.div]) divSum[row.div] = 0; divSum[row.div] += n;
 
         let col7 = { display: '', sortValue: 0 }; 
@@ -349,7 +365,7 @@ function renderDashboard(data) {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0);
             col7.sortValue = cob;
             col7.display = row.est_gerencial === 'Inmovilizado' ? `<b class="text-danger">${cob > 100 ? '> 100' : cob.toFixed(0)}%</b>` : (n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>'));
-            let m = gerencialMap[row.est_gerencial];
+            let m = gerencialMap[row.est_gerencial] || gerencialMap['Sano'];
             col8.display = label(row.est_gerencial, m.css); col8.sortValue = m.sort;
 
             if (row.est_gerencial === 'Comprar Urgente') k.m1++; else if (row.est_gerencial === 'En Tiempo') k.m2++; else k.m3++;
@@ -357,7 +373,7 @@ function renderDashboard(data) {
             let surtir = Math.min(s, n); let falta = n - s;
             col7.sortValue = surtir;
             col7.display = `<b class="fs-6 text-dark">📦 ${surtir.toLocaleString('en-US')}</b>${falta > 0 ? `<br><small class="text-danger fw-bold">Faltan: ${falta.toLocaleString('en-US')}</small>`:''}`;
-            let m = operativoMap[row.est_operativo];
+            let m = operativoMap[row.est_operativo] || operativoMap['Completado'];
             col8.display = label(m.text || row.est_operativo, m.css); col8.sortValue = m.sort;
 
             if (row.est_operativo === 'Quiebre' || row.est_operativo === 'Faltante') k.m1++;
@@ -404,41 +420,4 @@ function updateUI(s, n, k, divSum) {
     if(statusChart) statusChart.destroy();
     statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), {
         type: 'doughnut',
-        data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4+k.m5], backgroundColor: colorsPie, borderWidth: 2 }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }, datalabels: { formatter: (value, ctx) => { let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); let percentage = (value * 100 / sum).toFixed(1) + "%"; return value > 0 ? percentage : ''; }, color: '#444', font: { weight: 'bold' } } } }
-    });
-}
-
-function switchView(v) {
-    currentView = v; 
-    $('.view-btn').removeClass('active'); 
-    $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active');
-    updateStatusFilterOptions();
-    applyFilters();
-}
-
-// ==========================================
-// DRILL DOWN (PANTALLA DIVIDIDA DE PICKING)
-// ==========================================
-function openDrillDown(g) {
-    $('#mainScreen').addClass('hidden-screen'); 
-    $('#drillDownScreen').removeClass('hidden-screen');
-    
-    $('#detailDivCat').text(`${g.div} > ${g.cat}`); 
-    $('#detailGroupName').text(g.grp);
-
-    // Llenar Izquierda: TIENDAS
-    tiendasTable.clear();
-    g.tiendas.forEach(t => {
-        let badge = '';
-        if (t.necesidad > t.saldo_t) badge = label('Urgente', 'bg-rojo');
-        else badge = label('Surtir', 'bg-amarillo');
-
-        tiendasTable.row.add([
-            `<b>${t.nombre}</b><br><small class="text-muted">${t.tipo}</small>`, 
-            t.saldo_t, 
-            `<b class="text-danger fs-6">${t.necesidad}</b>`, 
-            badge
-        ]);
-    });
-    tiendas
+        data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4+k.m5], backgroundColor: colorsPie, b
