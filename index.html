@@ -21,11 +21,11 @@
         .select2-container--bootstrap-5 .select2-selection--multiple { min-height: 38px !important; max-height: 100px !important; overflow-y: auto !important; }
 
         .status-pill { padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 0.75rem; text-align: center; min-width: 110px; display: inline-block; }
-        .bg-verde { background-color: #d1e7dd; color: #0f5132; border: 1px solid #BADBCC; }
-        .bg-amarillo { background-color: #fff3cd; color: #664d03; border: 1px solid #FFECB5; }
-        .bg-rojo { background-color: #f8d7da; color: #842029; border: 1px solid #F5C2C7; }
-        .bg-gris { background-color: #e9ecef; color: #495057; border: 1px solid #ced4da; }
-        .bg-morado { background-color: #e0cffc; color: #5f3dc4; border: 1px solid #b197fc; } 
+        .bg-verde { background-color: #198754; color: white; border: 1px solid #146c43; } /* Verde vivo */
+        .bg-amarillo { background-color: #ffc107; color: #212529; border: 1px solid #ffcd39; } /* Amarillo vivo */
+        .bg-rojo { background-color: #dc3545; color: white; border: 1px solid #b02a37; } /* Rojo vivo */
+        .bg-gris { background-color: #6c757d; color: white; border: 1px solid #5c636a; }
+        .bg-morado { background-color: #6f42c1; color: white; border: 1px solid #59359a; } 
 
         table.dataTable thead th { background-color: var(--brand-blue) !important; color: white !important; text-align: center !important; vertical-align: middle; }
         .clickable-row { cursor: pointer; transition: background-color 0.2s; }
@@ -60,7 +60,7 @@
             <button id="btnGerencial" class="view-btn active" onclick="switchView('gerencial')"><i class="fa-solid fa-briefcase me-2"></i>Vista Gerencial (Compras)</button>
             <button id="btnOperativo" class="view-btn" onclick="switchView('operativo')"><i class="fa-solid fa-boxes-packing me-2"></i>Vista Operativa (Picking)</button>
         </div>
-        <span class="badge bg-primary fs-6 shadow-sm">📅 28 Abr 2026</span>
+        <span class="badge bg-primary fs-6 shadow-sm" id="fechaActual">📅 Cargando...</span>
     </div>
 </div>
 
