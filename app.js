@@ -8,7 +8,7 @@ let mainTable, skuTable, tiendasTable;
 let necessityChart, statusChart;
 let currentView = 'gerencial'; 
 
-// 1. FECHA AUTOMÁTICA DEL SISTEMA
+// FECHA AUTOMÁTICA DEL SISTEMA
 const TODAY = new Date(); 
 const CURRENT_MONTH = TODAY.getMonth() + 1;
 
@@ -64,11 +64,11 @@ function checkSeason(div, cat, grp) {
 }
 
 // ==========================================
-// INICIALIZACIÓN DE TABLAS (CON PAGINACIÓN)
+// INICIALIZACIÓN DE TABLAS
 // ==========================================
 $(document).ready(function() {
     
-    // Inyectamos la fecha actual en la etiqueta superior
+    // Inyecta la fecha automática en la esquina superior
     $('#fechaActual').text('📅 ' + formatearFecha(TODAY));
 
     mainTable = $('#mainTable').DataTable({
@@ -82,8 +82,9 @@ $(document).ready(function() {
     tiendasTable = $('#tiendasTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, 
         pageLength: 25, 
-        lengthChange: true, // Activamos el selector
+        lengthChange: true, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
+        order: [], // Desactivamos el orden automático para respetar el orden de mayor a menor desde JS
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
             { targets: [1, 2], render: $.fn.dataTable.render.number(',', '.', 0, '') },
@@ -94,8 +95,9 @@ $(document).ready(function() {
     skuTable = $('#skuTable').DataTable({ 
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' }, 
         pageLength: 25, 
-        lengthChange: true, // Activamos el selector
+        lengthChange: true, 
         lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todas"]],
+        order: [], // Desactivamos el orden automático
         columnDefs: [
             { className: "text-center align-middle", targets: "_all" }, 
             { targets: [4], render: $.fn.dataTable.render.number(',', '.', 0, '') },
@@ -110,7 +112,16 @@ $(document).ready(function() {
     $('#f_div').on('select2:select select2:unselect', function() { updateSubFilters('div'); applyFilters(); });
     $('#f_cat').on('select2:select select2:unselect', function() { updateSubFilters('cat'); applyFilters(); });
     $('#f_grp, #f_age, #f_status').on('select2:select select2:unselect', function() { applyFilters(); });
-    $('#resetFilters').on('click', function() { $('#f_div, #f_cat, #f_grp, #f_age, #f_status').val(null).trigger('change.select2'); updateSubFilters('div'); applyFilters(); });
+    
+    // Evento del nuevo checkbox "Ocultar Fuera de Temp"
+    $('#hideFueraTemporada').on('change', function() { applyFilters(); });
+    
+    $('#resetFilters').on('click', function() { 
+        $('#f_div, #f_cat, #f_grp, #f_age, #f_status').val(null).trigger('change.select2'); 
+        $('#hideFueraTemporada').prop('checked', false);
+        updateSubFilters('div'); 
+        applyFilters(); 
+    });
 
     $('#mainTable tbody').on('click', 'tr', function () {
         let rowData = mainTable.row(this).data();
@@ -138,7 +149,7 @@ async function fetchAndUnzip(url) {
             break;
         }
     }
-    if (!csvText) throw new Error("El archivo ZIP está vacío.");
+    if (!csvText) throw new Error("El archivo ZIP está completamente vacío.");
     return csvText;
 }
 
@@ -171,7 +182,6 @@ function loadCSVData() {
         let k_cat = getCol(headersSug, "Categoria", "categoria");
         let k_grpId = getCol(headersSug, "Grupo ID", "grupo id");
         let k_tienda = getCol(headersSug, "Nombre Tienda", "tienda");
-        let k_tipo = getCol(headersSug, "Tipo de Tienda", "tipo");
         let k_saldoT = getCol(headersSug, "Saldo Tienda", "saldo tienda");
         let k_sAEC = getCol(headersSug, "Sugerido AEC", "aec");
         let k_sDS = getCol(headersSug, "Sugerido DS", "ds");
@@ -192,12 +202,8 @@ function loadCSVData() {
             let necMay = Math.round(parseFloat(row[k_nMayAEC]) || 0);
             let necDS = Math.round(parseFloat(row[k_nDS]) || 0);
 
-            // LOGICA MEJORADA DE MAYOREO: Por nombre O por necesidad mayoreo
-            let isMayoreo = tiendaNombre.toUpperCase().includes("MAYOREO") || 
-                            tiendaNombre.toUpperCase().includes("AEC") || 
-                            tiendaNombre.toUpperCase().includes("DS") || 
-                            necMay > 0;
-
+            // CORRECCIÓN MAYOREO: Solo si tiene "Mayoreo" en el nombre, o necesidad mayoreo > 0.
+            let isMayoreo = tiendaNombre.toUpperCase().includes("MAYOREO") || necMay > 0;
             let tipoTienda = isMayoreo ? "MAYOREO" : "DETALLE";
 
             let sugAEC = Math.round(parseFloat(row[k_sAEC]) || 0);
@@ -331,7 +337,16 @@ function updateStatusFilterOptions() {
 
 function applyFilters() {
     let f = { d: $('#f_div').val() || [], c: $('#f_cat').val() || [], g: $('#f_grp').val() || [], a: $('#f_age').val() || [], s: $('#f_status').val() || [] };
-    let filtered = dataBase.filter(r => (!f.d.length || f.d.includes(r.div)) && (!f.c.length || f.c.includes(r.cat)) && (!f.g.length || f.g.includes(r.grp)) && (!f.a.length || f.a.includes(r.age_cat)) && (!f.s.length || (currentView === 'gerencial' ? f.s.includes(r.est_gerencial) : f.s.includes(r.est_operativo))));
+    let hideTemp = $('#hideFueraTemporada').is(':checked');
+
+    let filtered = dataBase.filter(r => 
+        (!f.d.length || f.d.includes(r.div)) && 
+        (!f.c.length || f.c.includes(r.cat)) && 
+        (!f.g.length || f.g.includes(r.grp)) && 
+        (!f.a.length || f.a.includes(r.age_cat)) && 
+        (!f.s.length || (currentView === 'gerencial' ? f.s.includes(r.est_gerencial) : f.s.includes(r.est_operativo))) &&
+        (!hideTemp || r.est_operativo !== 'Fuera de Temporada') // APLICA EL SWITCH
+    );
     renderDashboard(filtered);
 }
 
@@ -355,7 +370,6 @@ function renderDashboard(data) {
             let cob = n > 0 ? (s / n * 100) : (s > 0 ? 999 : 0); col7.sortValue = cob;
             col7.display = row.est_gerencial === 'Inmovilizado' ? `<b class="text-danger">${cob > 100 ? '> 100' : cob.toFixed(0)}%</b>` : (n > 0 ? `<b class="text-primary">${cob.toFixed(0)}%</b>` : (s > 0 ? '<b class="text-success">> 100%</b>' : '<b>0%</b>'));
             
-            // MAPA DE COLORES VIVOS GERENCIA
             let cssColor = '';
             if (row.est_gerencial === 'Sano') cssColor = 'bg-verde';
             else if (row.est_gerencial === 'Comprar Urgente') cssColor = 'bg-rojo';
@@ -397,7 +411,7 @@ function updateUI(s, n, k, divSum) {
 
     let sorted = Object.entries(divSum).sort((a,b) => b[1] - a[1]).slice(0, 10);
     
-    // Gráfico de barras LIMPIO (Sin fondo ni eje Y)
+    // Gráfico Valla SIN LINEAS
     if(necessityChart) necessityChart.destroy();
     necessityChart = new Chart(document.getElementById('chartNecessity').getContext('2d'), { 
         type: 'bar', 
@@ -412,14 +426,28 @@ function updateUI(s, n, k, divSum) {
         } 
     });
 
-    // Colores Vivos para Gerencia
     let labelsPie = currentView === 'gerencial' ? ['Urgente', 'En Tiempo', 'Sano'] : ['Quiebre/Faltante', 'Por Surtir', 'Inactivos'];
     let colorsPie = currentView === 'gerencial' ? ['#dc3545', '#ffc107', '#198754'] : ['#212529', '#ffc107', '#e9ecef'];
     if(statusChart) statusChart.destroy();
     statusChart = new Chart(document.getElementById('chartStatus').getContext('2d'), { type: 'doughnut', data: { labels: labelsPie, datasets: [{ data: [k.m1, k.m2, k.m3+k.m4+k.m5], backgroundColor: colorsPie, borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }, datalabels: { formatter: (value, ctx) => { let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return value > 0 ? (value * 100 / sum).toFixed(1) + "%" : ''; }, color: '#444', font: { weight: 'bold' } } } } });
 }
 
-function switchView(v) { currentView = v; $('.view-btn').removeClass('active'); $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active'); updateStatusFilterOptions(); applyFilters(); }
+function switchView(v) { 
+    currentView = v; 
+    $('.view-btn').removeClass('active'); 
+    $(`#btn${v.charAt(0).toUpperCase() + v.slice(1)}`).addClass('active'); 
+    
+    // Muestra u oculta el boton de temporada segun la vista
+    if(v === 'operativo') {
+        $('#toggleTemporadaContainer').show();
+    } else {
+        $('#toggleTemporadaContainer').hide();
+        $('#hideFueraTemporada').prop('checked', false);
+    }
+    
+    updateStatusFilterOptions(); 
+    applyFilters(); 
+}
 
 function openDrillDown(g) {
     $('#mainScreen').addClass('hidden-screen'); $('#drillDownScreen').removeClass('hidden-screen');
@@ -439,11 +467,14 @@ function openDrillDown(g) {
         let mColor = g.est_gerencial === 'Sano' ? 'bg-verde' : (g.est_gerencial === 'Comprar Urgente' ? 'bg-rojo' : (g.est_gerencial === 'Inmovilizado' ? 'bg-morado' : 'bg-amarillo'));
         $('#detEstadoBadge').html(label(g.est_gerencial, mColor));
     } else {
-        $('#detFaltanteTitle').text('Faltante Operativo');
+        $('#detFaltanteTitle').text('Saldo Insuficiente (Faltan)');
         $('#detFaltante').text(fT.toLocaleString('en-US')).removeClass('text-dark').addClass('text-danger');
         let mColor = g.est_operativo === 'Completado' ? 'bg-verde' : (g.est_operativo === 'Quiebre' || g.est_operativo === 'Faltante' ? 'bg-rojo' : (g.est_operativo === 'Residual' || g.est_operativo === 'Fuera de Temporada' ? 'bg-gris' : 'bg-amarillo'));
         $('#detEstadoBadge').html(label(g.est_operativo, mColor));
     }
+
+    // ORDENAR TIENDAS DE MAYOR A MENOR NECESIDAD
+    g.tiendas.sort((a, b) => b.necesidad - a.necesidad);
 
     tiendasTable.clear();
     g.tiendas.forEach(t => {
@@ -456,12 +487,18 @@ function openDrillDown(g) {
             badge = label('Ok', 'bg-verde');
         }
 
-        let nombreDisplay = t.nombre.toUpperCase().includes('DS') ? `<b class="text-danger">${t.nombre}</b>` : `<b>${t.nombre}</b>`;
+        // VITRINA Y DS = ROJO
+        let isDS = t.nombre.toUpperCase().includes('DS') || t.nombre.toUpperCase().includes('VITRINA');
+        let nombreDisplay = isDS ? `<b class="text-danger">${t.nombre}</b>` : `<b>${t.nombre}</b>`;
+        
         let col_req = { display: `<b class="text-danger fs-6">${t.necesidad.toLocaleString('en-US')}</b>`, sortValue: t.necesidad };
         
         tiendasTable.row.add([ `${nombreDisplay}<br><small class="text-muted">${t.tipo}</small>`, t.sugerido, t.saldo_t, col_req, badge ]);
     });
     tiendasTable.draw();
+
+    // ORDENAR SKUs DE MAYOR A MENOR SALDO TOTAL
+    g.skus.sort((a, b) => b.total - a.total);
 
     skuTable.clear();
     g.skus.filter(s => s.total > 0).forEach(s => { 
